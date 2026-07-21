@@ -54,4 +54,29 @@ return [
         'paymode' => env('ICICI_TEST_PAYMODE'),
     ],
 
+    /*
+    | Real Razorpay/Cashfree/PayPal test-mode credentials, used only by
+    | tests/Browser/RazorpayLiveSandboxTest.php, CashfreeLiveSandboxTest.php,
+    | and PayPalLiveSandboxTest.php respectively. Sourced from
+    | .env.testing.local (gitignored - see .env.testing.local.example),
+    | which those tests load and push into this config at runtime since
+    | Laravel doesn't auto-load it.
+    */
+    'razorpay_sandbox' => [
+        'key_id' => env('RAZORPAY_TEST_KEY_ID'),
+        'key_secret' => env('RAZORPAY_TEST_KEY_SECRET'),
+    ],
+
+    'cashfree_sandbox' => [
+        'key_id' => env('CASHFREE_TEST_KEY_ID'),
+        'key_secret' => env('CASHFREE_TEST_KEY_SECRET'),
+    ],
+
+    'paypal_sandbox' => [
+        'client_id' => env('PAYPAL_TEST_CLIENT_ID'),
+        'secret' => env('PAYPAL_TEST_SECRET'),
+        'buyer_email' => env('PAYPAL_TEST_BUYER_EMAIL'),
+        'buyer_password' => env('PAYPAL_TEST_BUYER_PASSWORD'),
+    ],
+
 ];
