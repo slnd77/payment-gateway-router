@@ -14,6 +14,7 @@ class PaymentGatewayFactory
         return match ($connection['pg_class']) {
             'ICICI' => new ICICI($connection['attributes'], $connection['type']),
             'PGSimulator' => new PGSimulator($connection['attributes'], $connection['type']),
+            'RAZORPAY' => new Razorpay($connection['attributes'], $connection['type']),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
     }
@@ -23,6 +24,7 @@ class PaymentGatewayFactory
         return match ($pg_class) {
             'ICICI' => new ICICI([]),
             'PGSimulator' => new PGSimulator([]),
+            'RAZORPAY' => new Razorpay([]),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
     }
