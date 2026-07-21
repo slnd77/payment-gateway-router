@@ -15,6 +15,7 @@ class PaymentGatewayFactory
             'ICICI' => new ICICI($connection['attributes'], $connection['type']),
             'PGSimulator' => new PGSimulator($connection['attributes'], $connection['type']),
             'RAZORPAY' => new Razorpay($connection['attributes'], $connection['type']),
+            'CASHFREE' => new Cashfree($connection['attributes'], $connection['type']),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
     }
@@ -25,6 +26,7 @@ class PaymentGatewayFactory
             'ICICI' => new ICICI([]),
             'PGSimulator' => new PGSimulator([]),
             'RAZORPAY' => new Razorpay([]),
+            'CASHFREE' => new Cashfree([]),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
     }
