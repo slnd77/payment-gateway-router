@@ -2,6 +2,7 @@
 
 namespace App\Classes\PaymentGateways;
 
+use App\Classes\PaymentGateways\Concerns\LogsApiCalls;
 use App\Contracts\PaymentGatewayInterface;
 use App\DTO\PaymentRefundDTO;
 use App\DTO\PaymentRequestDTO;
@@ -10,23 +11,23 @@ use App\Enums\ConnectionType;
 use App\Enums\PaymentGatewayRequestType;
 use App\Enums\PaymentMethod;
 use App\Enums\TransactionStatus;
-use App\Models\PaymentGatewayConnectionApiLog;
 use App\Models\Transaction;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
 use Devhammed\LaravelBrickMoney\Money;
-use Illuminate\Contracts\View\View;
 use PaypalServerSdkLib\Authentication\ClientCredentialsAuthCredentialsBuilder;
 use PaypalServerSdkLib\Environment;
-use PaypalServerSdkLib\Exceptions\ApiException;
 use PaypalServerSdkLib\Models\CapturedPayment;
 use PaypalServerSdkLib\Models\Order;
+use PaypalServerSdkLib\Models\OrdersCapture;
 use PaypalServerSdkLib\Models\Refund;
 use PaypalServerSdkLib\PaypalServerSdkClient;
 use PaypalServerSdkLib\PaypalServerSdkClientBuilder;
 
 class PayPal implements PaymentGatewayInterface
 {
+    use LogsApiCalls;
+
     protected ?string $clientId;
 
     protected ?string $secret;
@@ -87,39 +88,6 @@ class PayPal implements PaymentGatewayInterface
     }
 
     /**
-     * @param  array<string, mixed>  $requestData
-     * @param  array<string, mixed>  $responseData
-     */
-    protected function logApiCall(Transaction $transaction, PaymentGatewayRequestType $requestType, array $requestData, array $responseData, string $responseStatus = '200'): void
-    {
-        PaymentGatewayConnectionApiLog::create([
-            'client_id' => $transaction->client_id,
-            'pg_connection_id' => $transaction->pg_connection_id,
-            'transaction_id' => $transaction->id,
-            'request_type' => $requestType,
-            'request_data' => $requestData,
-            'response_data' => $responseData,
-            'response_status' => $responseStatus,
-        ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $requestData
-     */
-    protected function logApiFailure(Transaction $transaction, PaymentGatewayRequestType $requestType, array $requestData, \Throwable $e): void
-    {
-        $responseBody = $e instanceof ApiException && $e->getHttpResponse()
-            ? $e->getHttpResponse()->getRawBody()
-            : $e->getMessage();
-
-        $statusCode = $e instanceof ApiException && $e->getHttpResponse()
-            ? (string) $e->getHttpResponse()->getStatusCode()
-            : '400';
-
-        $this->logApiCall($transaction, $requestType, $requestData, ['error' => $responseBody], $statusCode);
-    }
-
-    /**
      * PayPal's SDK doesn't always throw when a request fails — a 422 business-
      * validation error (e.g. an unsupported currency) comes back as a plain
      * error array from getResult() instead of raising ErrorException, so every
@@ -127,6 +95,7 @@ class PayPal implements PaymentGatewayInterface
      * trusting it.
      *
      * @template T of object
+     *
      * @param  class-string<T>  $expectedClass
      * @param  array<string, mixed>  $requestData
      * @return T
@@ -146,7 +115,18 @@ class PayPal implements PaymentGatewayInterface
 
     public function handlePaymentRequest(PaymentRequestDTO $paymentRequest, Transaction $transaction): string
     {
-        $orderData = [
+        $orderData = $this->buildOrderPayload($paymentRequest, $transaction);
+        $order = $this->createOrder($transaction, $orderData);
+
+        return $this->extractApprovalUrl($order);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function buildOrderPayload(PaymentRequestDTO $paymentRequest, Transaction $transaction): array
+    {
+        return [
             'intent' => strtolower($this->paymentAction) === 'authorization' ? 'AUTHORIZE' : 'CAPTURE',
             'purchase_units' => [[
                 'reference_id' => (string) $transaction->id,
@@ -176,7 +156,13 @@ class PayPal implements PaymentGatewayInterface
                 ],
             ],
         ];
+    }
 
+    /**
+     * @param  array<string, mixed>  $orderData
+     */
+    protected function createOrder(Transaction $transaction, array $orderData): Order
+    {
         try {
             $apiResponse = $this->client()->getOrdersController()->createOrder(['body' => $orderData]);
         } catch (\Throwable $e) {
@@ -192,28 +178,19 @@ class PayPal implements PaymentGatewayInterface
             'status' => $order->getStatus(),
         ]);
 
-        return route('paypalEmbeddedCheckout', ['transaction' => $transaction->id, 'order' => $order->getId()]);
+        return $order;
     }
 
-    /**
-     * Renders the page that boots the PayPal JS SDK and renders its Smart
-     * Payment Buttons for the already-created order. Bound directly as the
-     * handler for the `paypalEmbeddedCheckout` route (no dedicated controller
-     * needed).
-     */
-    public function checkoutForm(Transaction $transaction, string $order): View
+    protected function extractApprovalUrl(Order $order): string
     {
-        $transaction->loadMissing(['pgConnection']);
+        $approveLink = collect($order->getLinks() ?? [])
+            ->first(fn ($link) => in_array($link->getRel(), ['payer-action', 'approve'], true));
 
-        return view('paypal.checkout', [
-            'clientId' => (string) ($transaction->pgConnection->attributes['client_id'] ?? ''),
-            'currency' => (string) $transaction->currency,
-            'orderId' => $order,
-            'returnUrl' => route('handlePaymentResponse', [
-                'pgClass' => 'PAYPAL',
-                'transactionDbId' => $transaction->id,
-            ]),
-        ]);
+        if (! $approveLink) {
+            throw new \Exception('Payment Gateway Error: missing PayPal approval link in response.');
+        }
+
+        return $approveLink->getHref();
     }
 
     protected function mapOrderStatus(string $status): TransactionStatus
@@ -250,41 +227,61 @@ class PayPal implements PaymentGatewayInterface
             throw new \Exception('Transaction not found.');
         }
 
-        $amount = $transaction->amount['amount'];
-        $pgFees = $this->calculateFees($amount);
-
         if (($response['status'] ?? null) === 'cancelled') {
-            return new PaymentResponseDTO(
-                transactionDbId: (string) $transaction->id,
-                siteReferenceId: $transaction->site_reference_id,
-                status: TransactionStatus::FAILED,
-                transactionId: '',
-                description: 'Payment was cancelled by the customer.',
-                amount: $amount,
-                pgFees: $pgFees,
-                totalAmount: $amount->plus($pgFees),
-                transactionDateTime: CarbonImmutable::now(),
-                currency: $transaction->currency,
-                paymentMethod: PaymentMethod::UNKNOWN,
-                clientName: $transaction->client->name,
-                pgConnection: $transaction->pgConnection->name,
-                pgResponseRaw: $response,
-            );
+            return $this->buildCancelledResponse($transaction, $response);
         }
 
-        $orderId = (string) ($response['orderId'] ?? '');
+        // PayPal appends its own order id back to return_url/cancel_url as `token`
+        // when redirecting the buyer's browser after the hosted approval page.
+        $orderId = (string) ($response['token'] ?? $response['orderId'] ?? '');
 
         if ($orderId === '') {
             throw new \Exception('Missing PayPal order id in callback.');
         }
 
+        $order = $this->captureOrder($transaction, $orderId);
+
+        return $this->buildCaptureResponse($transaction, $response, $order);
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     */
+    protected function buildCancelledResponse(Transaction $transaction, array $response): PaymentResponseDTO
+    {
+        $amount = $transaction->amount['amount'];
+        $pgFees = $this->calculateFees($amount);
+
+        return new PaymentResponseDTO(
+            transactionDbId: (string) $transaction->id,
+            siteReferenceId: $transaction->site_reference_id,
+            status: TransactionStatus::FAILED,
+            transactionId: '',
+            description: 'Payment was cancelled by the customer.',
+            amount: $amount,
+            pgFees: $pgFees,
+            totalAmount: $amount->plus($pgFees),
+            transactionDateTime: CarbonImmutable::now(),
+            currency: $transaction->currency,
+            paymentMethod: PaymentMethod::UNKNOWN,
+            clientName: $transaction->client->name,
+            pgConnection: $transaction->pgConnection->name,
+            pgResponseRaw: $response,
+        );
+    }
+
+    protected function captureOrder(Transaction $transaction, string $orderId): Order
+    {
         $clientId = (string) ($transaction->pgConnection->attributes['client_id'] ?? '');
         $clientSecret = (string) ($transaction->pgConnection->attributes['secret'] ?? '');
 
         try {
             $apiResponse = $this->client($clientId, $clientSecret)->getOrdersController()->captureOrder([
                 'id' => $orderId,
-                'body' => [],
+                // PHP's [] json_encodes to a JSON array (`[]`), but PayPal's capture
+                // endpoint requires a JSON object body even when empty, or it rejects
+                // the request with MALFORMED_REQUEST_JSON.
+                'body' => new \stdClass,
             ]);
         } catch (\Throwable $e) {
             $this->logApiFailure($transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, ['id' => $orderId], $e);
@@ -293,13 +290,36 @@ class PayPal implements PaymentGatewayInterface
         }
 
         $order = $this->assertResult($apiResponse->getResult(), Order::class, $transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, ['id' => $orderId]);
+
+        $this->logApiCall($transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, ['id' => $orderId], [
+            'id' => $order->getId(),
+            'status' => $order->getStatus(),
+            'capture_id' => $this->extractCapture($order)?->getId(),
+        ]);
+
+        return $order;
+    }
+
+    protected function extractCapture(Order $order): ?OrdersCapture
+    {
+        $purchaseUnits = $order->getPurchaseUnits() ?? [];
+        $captures = ($purchaseUnits[0] ?? null)?->getPayments()?->getCaptures() ?? [];
+
+        return $captures[0] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     */
+    protected function buildCaptureResponse(Transaction $transaction, array $response, Order $order): PaymentResponseDTO
+    {
         $status = $this->mapOrderStatus((string) $order->getStatus());
         $transactionId = $order->getId();
         $paymentMethod = PaymentMethod::UNKNOWN;
+        $amount = $transaction->amount['amount'];
+        $pgFees = $this->calculateFees($amount);
 
-        $purchaseUnits = $order->getPurchaseUnits() ?? [];
-        $captures = ($purchaseUnits[0] ?? null)?->getPayments()?->getCaptures() ?? [];
-        $capture = $captures[0] ?? null;
+        $capture = $this->extractCapture($order);
 
         if ($capture) {
             $transactionId = $capture->getId();
@@ -307,12 +327,6 @@ class PayPal implements PaymentGatewayInterface
             $amount = Money::of($capture->getAmount()->getValue(), $capture->getAmount()->getCurrencyCode());
             $pgFees = $this->calculateFees($amount);
         }
-
-        $this->logApiCall($transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, ['id' => $orderId], [
-            'id' => $order->getId(),
-            'status' => $order->getStatus(),
-            'capture_id' => $capture?->getId(),
-        ]);
 
         return new PaymentResponseDTO(
             transactionDbId: (string) $transaction->id,
