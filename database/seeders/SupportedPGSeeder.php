@@ -51,16 +51,14 @@ class SupportedPGSeeder extends Seeder
                     'fees_included_in_amount' => 'boolean',
                     'return_url' => 'string',
             ]],
-            'CASHFREE' => [
-                'pg_class'=> 'CASHFREE',
-                'required' => [
-                    'supports_refunds' => 'boolean',
-                    'key_id' => 'string',
-                    'key_secret' => 'string',
-                    'fees_included_in_amount' => 'boolean',
-                    'fees_rate' => 'float',
-            ]],
             /*'STRIPE' => ['required' => [
+                'supports_refunds' => 'boolean',
+                'key_id' => 'string',
+                'key_secret' => 'string',
+                'fees_included_in_amount' => 'boolean',
+                'fees_rate' => 'float',
+            ]],
+            'CASHFREE' => ['required' => [
                 'supports_refunds' => 'boolean',
                 'key_id' => 'string',
                 'key_secret' => 'string',
