@@ -1,6 +1,7 @@
 <?php
 
 use App\Classes\PaymentGateways\Cashfree;
+use App\Classes\PaymentGateways\PayPal;
 use App\Classes\PaymentGateways\Razorpay;
 use App\Http\Controllers\PGSimulatorController;
 use App\Http\Controllers\UtilsController;
@@ -11,6 +12,7 @@ Route::get('testPayment', [UtilsController::class, 'testPayment'])->name('testPa
 Route::get('pg-simulator/checkout/{transaction}', [PGSimulatorController::class, 'checkout'])->name('pgSimulatorCheckout');
 Route::get('razorpay/checkout/{transaction}/{order}', [Razorpay::class, 'checkoutForm'])->name('razorpayEmbeddedCheckout');
 Route::get('cashfree/checkout/{transaction}/{session}', [Cashfree::class, 'checkoutForm'])->name('cashfreeEmbeddedCheckout');
+Route::get('paypal/checkout/{transaction}/{order}', [PayPal::class, 'checkoutForm'])->name('paypalEmbeddedCheckout');
 
 if (app()->environment('testing')) {
     require __DIR__.'/testing.php';

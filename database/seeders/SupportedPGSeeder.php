@@ -48,7 +48,9 @@ class SupportedPGSeeder extends Seeder
                     'currency' => 'string|USD',
                     'client_id' => 'string',
                     'secret' => 'string',
+                    'supports_refunds' => 'boolean',
                     'fees_included_in_amount' => 'boolean',
+                    'fees_rate' => 'float',
                     'return_url' => 'string',
             ]],
             'CASHFREE' => [
