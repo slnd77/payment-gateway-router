@@ -39,4 +39,19 @@ return [
         'email_enabled' => env('PG_TRANSACTION_EMAIL_ENABLED', true),
     ],
 
+    /*
+    | Real ICICI UAT sandbox credentials, used only by
+    | tests/Browser/IciciLiveSandboxTest.php. Sourced from
+    | .env.testing.local (gitignored - see .env.testing.local.example),
+    | which that test loads and pushes into this config at runtime since
+    | Laravel doesn't auto-load it.
+    */
+    'icici_sandbox' => [
+        'merchant_id' => env('ICICI_TEST_MERCHANT_ID'),
+        'aggregator_id' => env('ICICI_TEST_AGGREGATOR_ID'),
+        'encryption_key' => env('ICICI_TEST_ENCRYPTION_KEY'),
+        'sub_merchant_id' => env('ICICI_TEST_SUB_MERCHANT_ID'),
+        'paymode' => env('ICICI_TEST_PAYMODE'),
+    ],
+
 ];

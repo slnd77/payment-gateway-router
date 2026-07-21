@@ -5,5 +5,8 @@
     "scripts": {
         "build": "echo 'No frontend build required.'",
         "pack-code": "npx --yes repomix"
+    },
+    "devDependencies": {
+        "playwright": "^1.61.1"
     }
 }
