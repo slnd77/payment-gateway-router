@@ -42,7 +42,7 @@ Each gateway is implemented against `App\Contracts\PaymentGatewayInterface`, so 
 
 ## Tech stack
 
-- **PHP** 8.3+ / **Laravel** 13
+- **PHP** 8.4+ / **Laravel** 13
 - **Filament** 4 (admin panel)
 - **Spatie Laravel Permission** (roles & permissions)
 - **Spatie Laravel Data**, **Devhammed Laravel Brick Money** (money-safe DTOs)
@@ -53,7 +53,7 @@ Each gateway is implemented against `App\Contracts\PaymentGatewayInterface`, so 
 
 ### Requirements
 
-- PHP ^8.3 with the extensions Laravel requires (`ext-curl`, `ext-json`, `ext-mbstring`, etc.)
+- PHP ^8.4 with the extensions Laravel requires (`ext-curl`, `ext-json`, `ext-mbstring`, etc.)
 - Composer 2
 - Node.js 22+ and npm (asset build only — this app has no SPA frontend)
 - MySQL/MariaDB or PostgreSQL for a real deployment (SQLite works for local dev)
@@ -256,11 +256,11 @@ composer lint:check   # Pint, check-only (used in CI)
 vendor/bin/phpstan analyse   # Static analysis (Larastan, level 7)
 ```
 
-CI runs the same checks against PHP 8.3–8.5 on every push/PR to `main` (see `.github/workflows/tests.yml` and `.github/workflows/lint.yml`).
+CI runs the same checks against PHP 8.4–8.5 on every push/PR to `main` (see `.github/workflows/tests.yml` and `.github/workflows/lint.yml`).
 
 ## Deployment
 
-1. **Provision the environment** — PHP 8.3+ with required extensions, a MySQL/PostgreSQL database, Redis (recommended for cache/queue in production), and a queue worker process supervisor (e.g. Supervisor/systemd) if `PG_TRANSACTION_EMAIL_ENABLED` or other queued jobs are in use.
+1. **Provision the environment** — PHP 8.4+ with required extensions, a MySQL/PostgreSQL database, Redis (recommended for cache/queue in production), and a queue worker process supervisor (e.g. Supervisor/systemd) if `PG_TRANSACTION_EMAIL_ENABLED` or other queued jobs are in use.
 2. **Configure `.env`** for the target environment:
    - `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL` set to your real, publicly reachable HTTPS domain — several gateways (e.g. Cashfree, PayPal) validate that callback/return URLs point at a real, resolvable domain and will reject local/reserved domains.
    - Real `DB_*`, `CACHE_STORE`, `QUEUE_CONNECTION`, and `SESSION_DRIVER` values (production should not run on SQLite/array/file drivers).
