@@ -21,6 +21,7 @@ use PaypalServerSdkLib\Environment;
 use PaypalServerSdkLib\Exceptions\ApiException;
 use PaypalServerSdkLib\Models\CapturedPayment;
 use PaypalServerSdkLib\Models\Order;
+use PaypalServerSdkLib\Models\Refund;
 use PaypalServerSdkLib\PaypalServerSdkClient;
 use PaypalServerSdkLib\PaypalServerSdkClientBuilder;
 
@@ -118,6 +119,31 @@ class PayPal implements PaymentGatewayInterface
         $this->logApiCall($transaction, $requestType, $requestData, ['error' => $responseBody], $statusCode);
     }
 
+    /**
+     * PayPal's SDK doesn't always throw when a request fails — a 422 business-
+     * validation error (e.g. an unsupported currency) comes back as a plain
+     * error array from getResult() instead of raising ErrorException, so every
+     * call site must verify the result is actually the expected model before
+     * trusting it.
+     *
+     * @template T of object
+     * @param  class-string<T>  $expectedClass
+     * @param  array<string, mixed>  $requestData
+     * @return T
+     */
+    protected function assertResult(mixed $result, string $expectedClass, Transaction $transaction, PaymentGatewayRequestType $requestType, array $requestData): object
+    {
+        if ($result instanceof $expectedClass) {
+            return $result;
+        }
+
+        $errorBody = is_array($result) ? $result : ['error' => $result];
+
+        $this->logApiCall($transaction, $requestType, $requestData, $errorBody, '422');
+
+        throw new \Exception('Payment Gateway Error: '.json_encode($errorBody));
+    }
+
     public function handlePaymentRequest(PaymentRequestDTO $paymentRequest, Transaction $transaction): string
     {
         $orderData = [
@@ -159,8 +185,7 @@ class PayPal implements PaymentGatewayInterface
             throw new \Exception('Payment Gateway Error: '.$e->getMessage());
         }
 
-        /** @var Order $order */
-        $order = $apiResponse->getResult();
+        $order = $this->assertResult($apiResponse->getResult(), Order::class, $transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, $orderData);
 
         $this->logApiCall($transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, $orderData, [
             'id' => $order->getId(),
@@ -267,8 +292,7 @@ class PayPal implements PaymentGatewayInterface
             throw new \Exception('Payment Gateway Error: '.$e->getMessage());
         }
 
-        /** @var Order $order */
-        $order = $apiResponse->getResult();
+        $order = $this->assertResult($apiResponse->getResult(), Order::class, $transaction, PaymentGatewayRequestType::PAYMENT_INITIATE, ['id' => $orderId]);
         $status = $this->mapOrderStatus((string) $order->getStatus());
         $transactionId = $order->getId();
         $paymentMethod = PaymentMethod::UNKNOWN;
@@ -324,8 +348,7 @@ class PayPal implements PaymentGatewayInterface
             throw new \Exception('Payment Gateway Error: '.$e->getMessage());
         }
 
-        /** @var CapturedPayment $capture */
-        $capture = $apiResponse->getResult();
+        $capture = $this->assertResult($apiResponse->getResult(), CapturedPayment::class, $transaction, PaymentGatewayRequestType::STATUS_CHECK, ['captureId' => $transaction->transaction_id]);
 
         $this->logApiCall($transaction, PaymentGatewayRequestType::STATUS_CHECK, ['captureId' => $transaction->transaction_id], [
             'id' => $capture->getId(),
@@ -395,7 +418,7 @@ class PayPal implements PaymentGatewayInterface
             throw new \Exception('Payment Gateway Error: '.$e->getMessage());
         }
 
-        $refund = $apiResponse->getResult();
+        $refund = $this->assertResult($apiResponse->getResult(), Refund::class, $transaction, PaymentGatewayRequestType::REFUND, $requestData);
         $refundArray = (array) json_decode((string) json_encode($refund), true);
 
         $this->logApiCall($transaction, PaymentGatewayRequestType::REFUND, $requestData, $refundArray);
