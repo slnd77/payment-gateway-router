@@ -73,7 +73,7 @@ class ClientConnectionsForm
 
                         Toggle::make('is_recurring')
                             ->label('Is Recurring')
-                            //->helperText('Allows up to 2 active connections.')
+                            // ->helperText('Allows up to 2 active connections.')
                             ->columnSpan(1)
                             ->default(false),
 

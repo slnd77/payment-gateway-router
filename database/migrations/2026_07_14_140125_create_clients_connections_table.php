@@ -17,9 +17,9 @@ return new class extends Migration
             $table->foreignId('pg_connection_id')->constrained();
             $table->boolean('pg_fees_recovery')->default(false);
             $table->boolean('is_recurring')->default(false);
-            $table->string('type')->default('TEST')->comment("TEST, PRODUCTION");
-            $table->boolean('status')->default(true)->comment("1: active, 0: inactive");
-            $table->dateTime('deleted_at')->nullable()->comment("deleted at");
+            $table->string('type')->default('TEST')->comment('TEST, PRODUCTION');
+            $table->boolean('status')->default(true)->comment('1: active, 0: inactive');
+            $table->dateTime('deleted_at')->nullable()->comment('deleted at');
             $table->timestamps();
         });
     }

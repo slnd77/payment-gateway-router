@@ -43,19 +43,20 @@ class HandleApiClientEncryptedRequest
 
         $decryptedData = json_decode($decryptedData, true);
 
-        if(!$decryptedData) {
+        if (! $decryptedData) {
             $this->logEvent($request, $client, ClientApiLogResult::ERROR, ['error' => 'Malformed Data']);
 
             return response()->json(['error' => 'Malformed Data'], 401);
         }
 
-        $request->merge(['decryptedData'=> $decryptedData,'clientDbId' => $client->id]);
+        $request->merge(['decryptedData' => $decryptedData, 'clientDbId' => $client->id]);
+
         return $next($request);
     }
 
     /**
-     * @param array<string, mixed> $responseData
-     * @param array<string, mixed>|null $requestData
+     * @param  array<string, mixed>  $responseData
+     * @param  array<string, mixed>|null  $requestData
      */
     private function logEvent(Request $request, Client $client, ClientApiLogResult $result, array $responseData, ?array $requestData = null): void
     {

@@ -25,6 +25,8 @@
  * IciciLiveSandboxTest.
  */
 
+require_once __DIR__.'/../Browser/Support/helpers.php';
+
 /**
  * Loads .env.testing.local (if present) and pushes its values into the
  * services.paypal_sandbox config, since Laravel only auto-loads
@@ -41,11 +43,14 @@ function loadPayPalSandboxEnv(): void
 
     Dotenv\Dotenv::createImmutable(base_path(), '.env.testing.local')->safeLoad();
 
+    // env() outside a config file is normally discouraged since it returns
+    // the default (usually null) once config is cached - fine here, since
+    // config:cache is a production-only step that never runs for tests.
     config([
-        'services.paypal_sandbox.client_id' => getenv('PAYPAL_TEST_CLIENT_ID'),
-        'services.paypal_sandbox.secret' => getenv('PAYPAL_TEST_SECRET'),
-        'services.paypal_sandbox.buyer_email' => getenv('PAYPAL_TEST_BUYER_EMAIL'),
-        'services.paypal_sandbox.buyer_password' => getenv('PAYPAL_TEST_BUYER_PASSWORD'),
+        'services.paypal_sandbox.client_id' => env('PAYPAL_TEST_CLIENT_ID'),
+        'services.paypal_sandbox.secret' => env('PAYPAL_TEST_SECRET'),
+        'services.paypal_sandbox.buyer_email' => env('PAYPAL_TEST_BUYER_EMAIL'),
+        'services.paypal_sandbox.buyer_password' => env('PAYPAL_TEST_BUYER_PASSWORD'),
     ]);
 }
 
@@ -121,7 +126,7 @@ it('reaches PayPal\'s real sandbox checkout page for a newly created order', fun
     $page = visit(route('testPayment', ['clientId' => $client->client_id, 'amount' => 1]));
 
     if (str_contains($page->content(), '"error"')) {
-        $this->markTestSkipped('PayPal sandbox rejected the order-creation call: '.$page->content());
+        $this->markTestSkipped('PayPal sandbox rejected the order-creation call: '.extractPageErrorSnippet($page->content()));
     }
 
     // handlePaymentRequest() returns PayPal's own hosted approval link
@@ -141,7 +146,7 @@ it('completes a real PayPal sandbox payment end to end', function () {
     $page = visit(route('testPayment', ['clientId' => $client->client_id, 'amount' => 1]));
 
     if (str_contains($page->content(), '"error"')) {
-        $this->markTestSkipped('PayPal sandbox rejected the order-creation call: '.$page->content());
+        $this->markTestSkipped('PayPal sandbox rejected the order-creation call: '.extractPageErrorSnippet($page->content()));
     }
 
     $page->assertHostIs('*paypal.com');

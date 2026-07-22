@@ -31,6 +31,6 @@ trait ValidatesGatewayAttributes
             ->danger()
             ->send();
 
-        throw new Halt();
+        throw new Halt;
     }
 }

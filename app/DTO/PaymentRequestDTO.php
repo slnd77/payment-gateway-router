@@ -20,13 +20,14 @@ class PaymentRequestDTO extends Data
      * @var array<string, mixed>
      */
     public readonly array $customer;
+
     public readonly PaymentType $paymentType;
 
     protected ?int $pgConnectionId;
 
     /**
-     * @param array<string, mixed> $customer
-     * @param array<string, mixed> $requestData
+     * @param  array<string, mixed>  $customer
+     * @param  array<string, mixed>  $requestData
      */
     public function __construct(
         public readonly string $clientDbId,
@@ -38,7 +39,7 @@ class PaymentRequestDTO extends Data
         array $customer,
         PaymentType|string $paymentType,
         public readonly array $requestData = [],
-        int|null $pgConnectionId = null
+        ?int $pgConnectionId = null
     ) {
         $this->currency = Currency::of($currency);
         $this->amount = Money::of($amount, $this->currency);
@@ -55,11 +56,12 @@ class PaymentRequestDTO extends Data
         $this->pgConnectionId = $pgConnectionId;
     }
 
-    public function setPgConnectionId(int $pgConnectionId):void
+    public function setPgConnectionId(int $pgConnectionId): void
     {
         $this->pgConnectionId = $pgConnectionId;
     }
-    public function getPgConnectionId():int|null
+
+    public function getPgConnectionId(): ?int
     {
         return $this->pgConnectionId;
     }

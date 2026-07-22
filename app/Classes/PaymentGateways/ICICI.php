@@ -45,7 +45,7 @@ class ICICI implements PaymentGatewayInterface
     protected bool $isRefundSupported = false;
 
     /**
-     * @param array<string, mixed> $pg_data
+     * @param  array<string, mixed>  $pg_data
      */
     public function __construct(array $pg_data, ConnectionType|string $connectionType = ConnectionType::TEST)
     {
@@ -102,7 +102,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $requestData
+     * @param  array<string, mixed>  $requestData
      */
     protected function getConcatenatedRequestString(array $requestData): string
     {
@@ -116,7 +116,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $requestData
+     * @param  array<string, mixed>  $requestData
      */
     protected function getHMacDigest(array $requestData): string
     {
@@ -143,7 +143,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $requestData
+     * @param  array<string, mixed>  $requestData
      */
     protected function logApiCall(Transaction $transaction, PaymentGatewayRequestType $requestType, array $requestData, Response $response): void
     {
@@ -183,7 +183,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     protected function mapSucessReponseToPaymentResponseDTO(array $response): PaymentResponseDTO
     {
@@ -216,7 +216,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     protected function mapResponseToPaymentResponseDTO(array $response): PaymentResponseDTO
     {
@@ -236,7 +236,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     protected function mapStatusResponseToPaymentResponseDTO(array $response, Transaction $transaction): PaymentResponseDTO
     {
@@ -297,7 +297,7 @@ class ICICI implements PaymentGatewayInterface
     }
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     public function handlePaymentResponse(array $response): PaymentResponseDTO
     {

@@ -21,12 +21,12 @@ class PGConnectionResource extends Resource
 {
     protected static ?string $model = PGConnection::class;
 
-
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCreditCard;
 
     protected static string|UnitEnum|null $navigationGroup = 'Settings';
 
     protected static ?string $navigationLabel = 'PG Connections';
+
     protected static ?string $recordTitleAttribute = 'name';
 
     public static function form(Schema $schema): Schema

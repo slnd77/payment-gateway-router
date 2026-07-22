@@ -2,6 +2,4 @@
 
 namespace App\Classes\PaymentGateways;
 
-class PaymentGateway
-{
-}
+class PaymentGateway {}

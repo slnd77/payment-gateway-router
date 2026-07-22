@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class PGConnection extends Model
 {
     protected $table = 'pg_connections';
+
     protected $casts = [
         'attributes' => 'array',
         'status' => 'boolean',
@@ -45,5 +46,4 @@ class PGConnection extends Model
     {
         return $this->hasMany(ClientConnection::class, 'pg_connection_id');
     }
-
 }

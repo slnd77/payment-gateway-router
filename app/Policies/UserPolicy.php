@@ -3,7 +3,6 @@
 namespace App\Policies;
 
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class UserPolicy
 {
@@ -12,7 +11,7 @@ class UserPolicy
      */
     public function viewAny(User $user): bool
     {
-        return ($user->can("can_view_all_user"));
+        return $user->can('can_view_all_user');
     }
 
     /**
@@ -20,7 +19,7 @@ class UserPolicy
      */
     public function view(User $user, User $users): bool
     {
-        return ($user->can("can_view_user"));
+        return $user->can('can_view_user');
     }
 
     /**
@@ -28,7 +27,7 @@ class UserPolicy
      */
     public function create(User $user): bool
     {
-        return ($user->can("can_create_user"));
+        return $user->can('can_create_user');
     }
 
     /**
@@ -36,7 +35,7 @@ class UserPolicy
      */
     public function update(User $user, User $users): bool
     {
-        return ($user->can("can_edit_user"));
+        return $user->can('can_edit_user');
     }
 
     /**
@@ -44,7 +43,7 @@ class UserPolicy
      */
     public function delete(User $user, User $users): bool
     {
-        return ($user->can("can_delete_user"));
+        return $user->can('can_delete_user');
     }
 
     /**

@@ -10,8 +10,8 @@ class ClientApiEvent
     use Dispatchable;
 
     /**
-     * @param array<string, mixed> $requestData
-     * @param array<string, mixed> $responseData
+     * @param  array<string, mixed>  $requestData
+     * @param  array<string, mixed>  $responseData
      */
     public function __construct(
         public readonly ?int $clientId,
@@ -20,6 +20,5 @@ class ClientApiEvent
         public readonly array $requestData = [],
         public readonly array $responseData = [],
         public readonly ?string $sourceIp = null,
-    ) {
-    }
+    ) {}
 }

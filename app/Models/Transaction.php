@@ -42,7 +42,7 @@ class Transaction extends Model
             'recover_pg_fees' => 'boolean',
             'pg_fees' => AsIntegerMoney::of('currency'),
             'total_amount' => AsIntegerMoney::of('currency'),
-            'transaction_date_time' => "datetime",
+            'transaction_date_time' => 'datetime',
             'request_data' => 'array',
             'response_data' => 'array',
         ];

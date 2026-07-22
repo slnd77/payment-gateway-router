@@ -2,7 +2,4 @@
 
 namespace App\Repositories;
 
-class PgConnectionRepository
-{
-
-}
+class PgConnectionRepository {}

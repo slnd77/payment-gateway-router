@@ -12,7 +12,7 @@ use Spatie\LaravelData\Data;
 class PaymentResponseDTO extends Data
 {
     /**
-     * @param array<string, mixed> $pgResponseRaw
+     * @param  array<string, mixed>  $pgResponseRaw
      */
     public function __construct(
         public readonly string $transactionDbId,
@@ -29,6 +29,5 @@ class PaymentResponseDTO extends Data
         public readonly string $clientName,
         public readonly string $pgConnection,
         public readonly array $pgResponseRaw,
-    ) {
-    }
+    ) {}
 }

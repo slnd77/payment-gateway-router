@@ -46,7 +46,7 @@ class TransactionService
     }
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     public function handlePaymentResponse(array $response, string $pgClass): RedirectResponse
     {
@@ -74,7 +74,7 @@ class TransactionService
     {
         $transaction = $this->saveTransactionFromPaymentResponse($paymentResponseDTO);
 
-        //dispatch event only if transaction status changes -to implement
+        // dispatch event only if transaction status changes -to implement
         PgTransactionEvent::dispatch($paymentResponseDTO, $paymentResponseDTO->status);
 
         return $transaction;
@@ -134,7 +134,7 @@ class TransactionService
     public function getTransactionStatus(int|string $transactionDbId): PaymentResponseDTO
     {
         $transaction = Transaction::with(['client', 'pgConnection'])->find($transactionDbId);
-        if (!$transaction) {
+        if (! $transaction) {
             throw new \Exception('Transaction not found.');
         }
 

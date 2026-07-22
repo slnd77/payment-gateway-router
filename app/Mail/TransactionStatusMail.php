@@ -17,8 +17,7 @@ class TransactionStatusMail extends Mailable
     public function __construct(
         public readonly PaymentResponseDTO $paymentResponseDTO,
         public readonly TransactionStatus $transactionStatus,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {

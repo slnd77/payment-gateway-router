@@ -250,13 +250,16 @@ Permissions are managed through [spatie/laravel-permission](https://spatie.be/do
 ## Testing & quality
 
 ```bash
-composer test        # config:clear, Pint (check-only), then the Pest suite
-composer lint         # Pint, auto-fixing style issues
-composer lint:check   # Pint, check-only (used in CI)
-vendor/bin/phpstan analyse   # Static analysis (Larastan, level 7)
+composer test              # config:clear, Pint (check-only), then Feature + Browser (mocked) tests
+composer test:live-sandbox # Feature/Browser tests that hit each gateway's *real* sandbox - opt-in, needs .env.testing.local credentials
+composer lint               # Pint, auto-fixing style issues
+composer lint:check         # Pint, check-only (used in CI)
+vendor/bin/phpstan analyse         # Static analysis (Larastan, level 7)
 ```
 
-CI runs the same checks against PHP 8.4–8.5 on every push/PR to `main` (see `.github/workflows/tests.yml` and `.github/workflows/lint.yml`).
+`composer test`/`composer ci:check` never touch a third-party site: `tests/Feature` and `tests/Browser` are fully mocked (`Http::fake()` or an SDK client swapped out). The real, network-dependent end-to-end tests against each gateway's own sandbox (`tests/BrowserLiveSandbox/*LiveSandboxTest.php`) are a separate `LiveSandbox` PHPUnit suite, run only via `composer test:live-sandbox`, and skip automatically when `.env.testing.local` credentials aren't present (see `.env.testing.local.example`).
+
+CI runs `composer test` against PHP 8.4–8.5 on every push/PR to `main` (see `.github/workflows/tests.yml` and `.github/workflows/lint.yml`) — the live-sandbox suite is never run in CI.
 
 ## Deployment
 

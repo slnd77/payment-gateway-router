@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('webhook_uri')->nullable();
             $table->string('logo')->nullable();
             $table->boolean('status')->default(true);
-            $table->json("data")->nullable();
+            $table->json('data')->nullable();
             $table->foreignId('user_id')->constrained();
             $table->softDeletes();
             $table->timestamps();

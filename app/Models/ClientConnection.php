@@ -7,12 +7,12 @@ use App\Enums\TransactionType;
 use App\Support\ClientCacheBuster;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ClientConnection extends Model
 {
     use SoftDeletes;
+
     protected $table = 'clients_connections';
 
     protected $casts = [

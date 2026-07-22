@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\ClientConnection;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class ClientConnectionsPolicy
 {
@@ -13,7 +12,7 @@ class ClientConnectionsPolicy
      */
     public function viewAny(User $user): bool
     {
-        return ($user->can("can_view_client_pg_connection"));
+        return $user->can('can_view_client_pg_connection');
     }
 
     /**
@@ -21,7 +20,7 @@ class ClientConnectionsPolicy
      */
     public function view(User $user, ClientConnection $clientConnection): bool
     {
-        return ($user->can("can_view_client_pg_connection"));
+        return $user->can('can_view_client_pg_connection');
     }
 
     /**
@@ -29,7 +28,7 @@ class ClientConnectionsPolicy
      */
     public function create(User $user): bool
     {
-        return ($user->can("can_create_client_pg_connection"));
+        return $user->can('can_create_client_pg_connection');
     }
 
     /**
@@ -37,7 +36,7 @@ class ClientConnectionsPolicy
      */
     public function update(User $user, ClientConnection $clientConnection): bool
     {
-        return ($user->can("can_edit_client_pg_connection"));
+        return $user->can('can_edit_client_pg_connection');
     }
 
     /**
@@ -45,7 +44,7 @@ class ClientConnectionsPolicy
      */
     public function delete(User $user, ClientConnection $clientConnection): bool
     {
-        return ($user->can("can_delete_client_pg_connection"));
+        return $user->can('can_delete_client_pg_connection');
     }
 
     /**

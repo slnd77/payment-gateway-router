@@ -15,9 +15,9 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('pg_class');
-            $table->json("attributes");
-            $table->boolean("status")->default(true);
-            $table->string("type")->default("TEST")->comment("TEST, PRODUCTION");
+            $table->json('attributes');
+            $table->boolean('status')->default(true);
+            $table->string('type')->default('TEST')->comment('TEST, PRODUCTION');
             $table->timestamps();
         });
     }

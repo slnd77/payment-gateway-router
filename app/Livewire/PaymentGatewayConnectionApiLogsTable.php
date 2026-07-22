@@ -101,7 +101,7 @@ class PaymentGatewayConnectionApiLogsTable extends Component implements HasActio
     }
 
     /**
-     * @param array<string, mixed>|null $data
+     * @param  array<string, mixed>|null  $data
      */
     protected function encodeForDisplay(?array $data): string
     {
@@ -115,7 +115,7 @@ class PaymentGatewayConnectionApiLogsTable extends Component implements HasActio
     }
 
     /**
-     * @param Closure(PaymentGatewayConnectionApiLog): (array<string, mixed>|null) $getData
+     * @param  Closure(PaymentGatewayConnectionApiLog): (array<string, mixed>|null)  $getData
      */
     protected function makeJsonModalAction(string $name, string $heading, Closure $getData): Action
     {
@@ -127,8 +127,8 @@ class PaymentGatewayConnectionApiLogsTable extends Component implements HasActio
 
                 return new HtmlString(
                     '<pre class="fi-ta-text w-full max-w-full overflow-x-auto whitespace-pre-wrap break-all text-xs">'
-                    . e($json === false ? 'No data' : $json)
-                    . '</pre>'
+                    .e($json === false ? 'No data' : $json)
+                    .'</pre>'
                 );
             })
             ->modalSubmitAction(false)

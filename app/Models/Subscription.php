@@ -13,7 +13,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Subscription extends Model
 {
-    use softDeletes;
+    use SoftDeletes;
+
     protected function casts(): array
     {
         return [

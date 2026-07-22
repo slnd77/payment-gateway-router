@@ -79,4 +79,15 @@ return [
         'buyer_password' => env('PAYPAL_TEST_BUYER_PASSWORD'),
     ],
 
+    /*
+    | Real Stripe test-mode credentials, used only by
+    | tests/Browser/StripeLiveSandboxTest.php. Sourced from
+    | .env.testing.local (gitignored - see .env.testing.local.example),
+    | which that test loads and pushes into this config at runtime since
+    | Laravel doesn't auto-load it.
+    */
+    'stripe_sandbox' => [
+        'key_secret' => env('STRIPE_TEST_KEY_SECRET'),
+    ],
+
 ];

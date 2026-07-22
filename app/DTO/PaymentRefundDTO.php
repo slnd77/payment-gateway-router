@@ -15,7 +15,7 @@ class PaymentRefundDTO extends Data
     protected ?int $pgConnectionId;
 
     /**
-     * @param array<string, mixed> $requestData
+     * @param  array<string, mixed>  $requestData
      */
     public function __construct(
         public readonly string $clientDbId,
@@ -25,7 +25,7 @@ class PaymentRefundDTO extends Data
         public readonly string $site_reference_id,
         public readonly string $refundReason,
         public readonly array $requestData = [],
-        int|null $pgConnectionId = null
+        ?int $pgConnectionId = null
     ) {
         $this->currency = Currency::of($currency);
         $this->amount = Money::of($amount, $this->currency);
@@ -33,11 +33,12 @@ class PaymentRefundDTO extends Data
         $this->pgConnectionId = $pgConnectionId;
     }
 
-    public function setPgConnectionId(int $pgConnectionId):void
+    public function setPgConnectionId(int $pgConnectionId): void
     {
         $this->pgConnectionId = $pgConnectionId;
     }
-    public function getPgConnectionId():int|null
+
+    public function getPgConnectionId(): ?int
     {
         return $this->pgConnectionId;
     }

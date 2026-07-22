@@ -24,7 +24,7 @@ class PaymentController extends Controller
         } catch (\Throwable $e) {
             $this->logFailure($request, $e);
 
-            return response()->json(['error' => $e->getFile()." ".$e->getLine()." ". $e->getMessage()], 400);
+            return response()->json(['error' => $e->getFile().' '.$e->getLine().' '.$e->getMessage()], 400);
         }
 
     }
@@ -45,6 +45,7 @@ class PaymentController extends Controller
     {
         try {
             $response = $request->all();
+
             return app(TransactionService::class)->handlePaymentResponse($response, $pgClass);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 400);

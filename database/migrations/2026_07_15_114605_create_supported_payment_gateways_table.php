@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('pg_class');
-            $table->json("attributes");
-            $table->boolean('status')->default(true)->comment("1: active, 0: inactive");
+            $table->json('attributes');
+            $table->boolean('status')->default(true)->comment('1: active, 0: inactive');
             $table->timestamps();
         });
     }

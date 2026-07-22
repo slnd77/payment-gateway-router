@@ -4,8 +4,8 @@ namespace App\Enums;
 
 enum TransactionType: string
 {
-    case SALE = "sale";
-    case DONATION = "donation";
+    case SALE = 'sale';
+    case DONATION = 'donation';
 
     /**
      * @return array<string, string>

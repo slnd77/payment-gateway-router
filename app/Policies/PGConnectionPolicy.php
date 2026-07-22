@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\PGConnection;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class PGConnectionPolicy
 {
@@ -13,7 +12,7 @@ class PGConnectionPolicy
      */
     public function viewAny(User $user): bool
     {
-        return ($user->can("can_view_pg_connection"));
+        return $user->can('can_view_pg_connection');
     }
 
     /**
@@ -21,7 +20,7 @@ class PGConnectionPolicy
      */
     public function view(User $user, PGConnection $pGConnection): bool
     {
-        return ($user->can("can_view_pg_connection"));
+        return $user->can('can_view_pg_connection');
     }
 
     /**
@@ -29,7 +28,7 @@ class PGConnectionPolicy
      */
     public function create(User $user): bool
     {
-        return ($user->can("can_create_pg_connection"));
+        return $user->can('can_create_pg_connection');
     }
 
     /**
@@ -37,7 +36,7 @@ class PGConnectionPolicy
      */
     public function update(User $user, PGConnection $pGConnection): bool
     {
-        return ($user->can("can_edit_pg_connection"));
+        return $user->can('can_edit_pg_connection');
     }
 
     /**
@@ -45,7 +44,7 @@ class PGConnectionPolicy
      */
     public function delete(User $user, PGConnection $pGConnection): bool
     {
-        return ($user->can("can_delete_pg_connection"));
+        return $user->can('can_delete_pg_connection');
     }
 
     /**

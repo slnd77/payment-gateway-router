@@ -21,6 +21,8 @@
  * applies to IciciLiveSandboxTest.
  */
 
+require_once __DIR__.'/../Browser/Support/helpers.php';
+
 /**
  * Loads .env.testing.local (if present) and pushes its values into the
  * services.razorpay_sandbox config, since Laravel only auto-loads
@@ -37,9 +39,12 @@ function loadRazorpaySandboxEnv(): void
 
     Dotenv\Dotenv::createImmutable(base_path(), '.env.testing.local')->safeLoad();
 
+    // env() outside a config file is normally discouraged since it returns
+    // the default (usually null) once config is cached - fine here, since
+    // config:cache is a production-only step that never runs for tests.
     config([
-        'services.razorpay_sandbox.key_id' => getenv('RAZORPAY_TEST_KEY_ID'),
-        'services.razorpay_sandbox.key_secret' => getenv('RAZORPAY_TEST_KEY_SECRET'),
+        'services.razorpay_sandbox.key_id' => env('RAZORPAY_TEST_KEY_ID'),
+        'services.razorpay_sandbox.key_secret' => env('RAZORPAY_TEST_KEY_SECRET'),
     ]);
 }
 
@@ -106,7 +111,7 @@ it('completes a real Razorpay test-mode payment end to end', function () {
     $page = visit(route('testPayment', ['clientId' => $client->client_id, 'amount' => 100]));
 
     if (str_contains($page->content(), '"error"')) {
-        $this->markTestSkipped('Razorpay test-mode rejected the order-creation call: '.$page->content());
+        $this->markTestSkipped('Razorpay test-mode rejected the order-creation call: '.extractPageErrorSnippet($page->content()));
     }
 
     // handlePaymentRequest() redirects to our own local checkoutForm page

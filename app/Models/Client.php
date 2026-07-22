@@ -11,10 +11,11 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#Use
+// Use
 class Client extends Model
 {
     use SoftDeletes;
+
     protected $casts = [
         'data' => 'array',
         'status' => 'boolean',
@@ -91,7 +92,7 @@ class Client extends Model
     public function oneTimePGConnection(): HasOne
     {
         return $this->hasOne(ClientConnection::class)
-            ->where("is_recurring", "=",false);
+            ->where('is_recurring', '=', false);
     }
 
     /**

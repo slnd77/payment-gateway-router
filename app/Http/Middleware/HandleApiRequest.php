@@ -36,7 +36,7 @@ class HandleApiRequest
     }
 
     /**
-     * @param array<string, mixed> $responseData
+     * @param  array<string, mixed>  $responseData
      */
     private function logEvent(Request $request, ?Client $client, array $responseData): void
     {
