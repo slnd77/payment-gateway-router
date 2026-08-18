@@ -11,6 +11,7 @@ use App\Services\TransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
@@ -45,9 +46,13 @@ class PaymentController extends Controller
     {
         try {
             $response = $request->all();
+            Log::debug('pgClass: {pgClass} Payment Response: {response}', ['pgClass' => $pgClass, 'response' => $response]);
 
             return app(TransactionService::class)->handlePaymentResponse($response, $pgClass);
         } catch (\Throwable $e) {
+            Log::error('pgClass: {pgClass} Error handling received payment response: {response} with {error}', ['pgClass' => $pgClass, 'response' => $response,
+                'error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }

@@ -188,14 +188,22 @@ class ICICI implements PaymentGatewayInterface
     protected function mapSucessReponseToPaymentResponseDTO(array $response): PaymentResponseDTO
     {
         // ICICI only supports INR currency, so hardcoding it here
-        $amount = Money::of($response['amount'], 'INR');
-        $pgFees = Money::of($response['oth_charge'], 'INR');
 
         $dbTransaction = Transaction::with(['client', 'pgConnection'])->find((string) $response['addlParam1']);
-
         if (! $dbTransaction) {
             throw new \Exception('Transaction not found.');
         }
+
+        $amount = Money::of($response['amount'], 'INR');
+
+        $pgFees = isset($response['oth_charge']) && is_numeric($response['oth_charge'])
+            ? Money::of($response['oth_charge'], 'INR')
+            : Money::of(0, 'INR');
+
+        $paymentMethod = isset($response['paymentMode'])
+            ? $this->mapPaymentModes((string) $response['paymentMode'])
+            : ($dbTransaction->payment_method ?? PaymentMethod::UNKNOWN);
+
 
         return new PaymentResponseDTO(
             transactionDbId: (string) $response['addlParam1'],
@@ -208,7 +216,7 @@ class ICICI implements PaymentGatewayInterface
             totalAmount: $amount->plus($pgFees),
             transactionDateTime: CarbonImmutable::createFromFormat('YmdHis', $response['paymentDateTime']),
             currency: Currency::of('INR'),
-            paymentMethod: $this->mapPaymentModes((string) $response['paymentMode']),
+            paymentMethod: $paymentMethod,
             clientName: $dbTransaction->client->name,
             pgConnection: $dbTransaction->pgConnection->name,
             pgResponseRaw: $response,
@@ -232,6 +240,8 @@ class ICICI implements PaymentGatewayInterface
             throw new \Exception('Transaction not found.');
         }
 
+        //ICICI status api has a different field for response code
+        $response['txnResponseCode'] = $response['responseCode'];
         return $this->mapStatusResponseToPaymentResponseDTO($response, $dbTransaction);
     }
 
@@ -240,7 +250,7 @@ class ICICI implements PaymentGatewayInterface
      */
     protected function mapStatusResponseToPaymentResponseDTO(array $response, Transaction $transaction): PaymentResponseDTO
     {
-        $status = match ($response['responseCode']) {
+        $status = match ($response['txnResponseCode']) {
             '0000' => TransactionStatus::SUCCESS,
             'P0030' => TransactionStatus::PENDING,
             default => TransactionStatus::FAILED,
@@ -254,7 +264,7 @@ class ICICI implements PaymentGatewayInterface
 
         $pgFees = isset($response['oth_charge']) && is_numeric($response['oth_charge'])
             ? Money::of($response['oth_charge'], 'INR')
-            : $transaction->pg_fees['pg_fees'];
+            : Money::of(0, 'INR');
 
         $transactionDateTime = CarbonImmutable::instance(
             isset($response['paymentDateTime'])
@@ -337,6 +347,7 @@ class ICICI implements PaymentGatewayInterface
         if ($response->failed()) {
             throw new \Exception('Payment Gateway Error: '.json_encode($response->body()));
         }
+
         $result = $response->json();
 
         if (! is_array($result)) {
