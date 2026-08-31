@@ -82,6 +82,12 @@ class ClientConnectionsForm
                             ->helperText('Passes gateway processing fees on to the client.')
                             ->columnSpan(2)
                             ->default(false),
+
+                        Toggle::make('self_redirect')
+                            ->label('Self Redirect')
+                            ->helperText('If enabled, the app redirects the client to the bank url. If disabled, the app returns the bank url in a JSON response.')
+                            ->columnSpan(2)
+                            ->default(true),
                     ]),
             ]);
     }

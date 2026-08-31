@@ -19,6 +19,7 @@ class ClientConnection extends Model
         'pg_fees_recovery' => 'boolean',
         'is_recurring' => 'boolean',
         'status' => 'boolean',
+        'self_redirect' => 'boolean',
         'type' => ConnectionType::class,
         'transaction_type' => TransactionType::class,
     ];
