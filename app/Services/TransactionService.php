@@ -29,7 +29,10 @@ class TransactionService
         protected PgConnectionRepository $pgConnectionRepository
     ) {}
 
-    public function initiatePayment(PaymentRequestDTO $paymentRequest): string
+    /**
+     * @return array{url: string, self_redirect: bool}
+     */
+    public function initiatePayment(PaymentRequestDTO $paymentRequest): array
     {
         $connection = $this->clientConnectionRepository->getClientPGConnection($paymentRequest->clientId,
             $paymentRequest->paymentType === PaymentType::ONE_TIME_PAYMENT ? 0 : 1);
@@ -42,7 +45,12 @@ class TransactionService
         $paymentRequest->setPgConnectionId($connection['pg_connection']['id']);
         $transaction = $this->saveTransactionFromPaymentRequest($paymentRequest);
 
-        return $paymentGateway->handlePaymentRequest($paymentRequest, $transaction);
+        $url = $paymentGateway->handlePaymentRequest($paymentRequest, $transaction);
+
+        return [
+            'url' => $url,
+            'self_redirect' => (bool) ($connection['self_redirect'] ?? true),
+        ];
     }
 
     /**
@@ -99,6 +107,7 @@ class TransactionService
                 'currency' => $paymentRequest->currency,
                 'transaction_amount' => $paymentRequest->amount,
                 'status' => TransactionStatus::PENDING,
+                'response_code' => null,
                 'request_data' => $paymentRequest->requestData,
             ]);
         });

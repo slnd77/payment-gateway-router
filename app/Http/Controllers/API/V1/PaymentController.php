@@ -19,9 +19,17 @@ class PaymentController extends Controller
     {
         try {
             $paymentRequestDto = PaymentRequestDTO::from($request->validated());
-            $url = app(TransactionService::class)->initiatePayment($paymentRequestDto);
+            $result = app(TransactionService::class)->initiatePayment($paymentRequestDto);
 
-            return redirect()->away($url);
+            if (! $result['self_redirect']) {
+                return response()->json([
+                    'payment_url' => $result['url'],
+                    'status' => 'success',
+                    'status_code' => 0,
+                ]);
+            }
+
+            return redirect()->away($result['url']);
         } catch (\Throwable $e) {
             $this->logFailure($request, $e);
 
