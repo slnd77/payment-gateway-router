@@ -18,6 +18,7 @@ class PaymentGatewayFactory
             'CASHFREE' => new Cashfree($connection['attributes'], $connection['type']),
             'PAYPAL' => new PayPal($connection['attributes'], $connection['type']),
             'STRIPE' => new Stripe($connection['attributes'], $connection['type']),
+            'PAYU' => new PayU($connection['attributes'], $connection['type']),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
     }
@@ -31,6 +32,7 @@ class PaymentGatewayFactory
             'CASHFREE' => new Cashfree([]),
             'PAYPAL' => new PayPal([]),
             'STRIPE' => new Stripe([]),
+            'PAYU' => new PayU([]),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
     }

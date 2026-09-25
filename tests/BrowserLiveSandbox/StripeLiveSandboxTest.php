@@ -79,7 +79,10 @@ function submitStripeTestCard(mixed $page, string $cardNumber): void
         ->fill('#cardCvc', '123')
         ->fill('#billingName', 'Jane Doe')
         ->click('Pay')
-        ->wait(2);
+        // Stripe processes the card and redirects back to our success/decline
+        // URL asynchronously; a short wait intermittently catches the page
+        // still mid-processing, so give it more room.
+        ->wait(8);
 }
 
 beforeEach(function () {
@@ -97,12 +100,18 @@ it('completes a real Stripe test-mode payment end to end with a successful test 
 
     $page = visit(route('testPayment', ['clientId' => $client->client_id, 'amount' => 100]));
 
-    if (str_contains($page->content(), '"error"')) {
+    // handlePaymentRequest() returns Stripe's own hosted checkout URL
+    // directly, so the very first redirect already lands on stripe.com when
+    // the checkout-session call succeeded. Only treat this as a rejected
+    // call if we're still on our own host - Stripe's hosted checkout page
+    // ships its own JS bundle that legitimately contains the literal string
+    // "error" (its client-side error-handling code), so checking
+    // $page->content() alone false-positives once we've actually landed on
+    // stripe.com.
+    if (! str_contains($page->url(), 'stripe.com') && str_contains($page->content(), '"error"')) {
         $this->markTestSkipped('Stripe test-mode rejected the checkout-session call: '.extractPageErrorSnippet($page->content()));
     }
 
-    // handlePaymentRequest() returns Stripe's own hosted checkout URL
-    // directly, so the very first redirect already lands on stripe.com.
     $page->assertHostIs('*stripe.com');
 
     submitStripeTestCard($page, '4242424242424242');
@@ -117,7 +126,7 @@ it('shows a decline error on Stripe\'s checkout page with a card that always dec
 
     $page = visit(route('testPayment', ['clientId' => $client->client_id, 'amount' => 100]));
 
-    if (str_contains($page->content(), '"error"')) {
+    if (! str_contains($page->url(), 'stripe.com') && str_contains($page->content(), '"error"')) {
         $this->markTestSkipped('Stripe test-mode rejected the checkout-session call: '.extractPageErrorSnippet($page->content()));
     }
 

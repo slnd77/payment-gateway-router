@@ -13,6 +13,7 @@ use App\Enums\TransactionStatus;
 use App\Models\PaymentGatewayConnectionApiLog;
 use App\Models\Transaction;
 use Carbon\CarbonImmutable;
+use Brick\Math\RoundingMode;
 use Devhammed\LaravelBrickMoney\Currency;
 use Devhammed\LaravelBrickMoney\Money;
 use Illuminate\Http\Client\Response;
@@ -197,7 +198,7 @@ class ICICI implements PaymentGatewayInterface
         $amount = Money::of($response['amount'], 'INR');
 
         $pgFees = isset($response['oth_charge']) && is_numeric($response['oth_charge'])
-            ? Money::of($response['oth_charge'], 'INR')
+            ? Money::of($response['oth_charge'], 'INR', roundingMode: RoundingMode::HALF_UP)
             : Money::of(0, 'INR');
 
         $paymentMethod = isset($response['paymentMode'])
@@ -263,7 +264,7 @@ class ICICI implements PaymentGatewayInterface
             : $transaction->amount['amount'];
 
         $pgFees = isset($response['oth_charge']) && is_numeric($response['oth_charge'])
-            ? Money::of($response['oth_charge'], 'INR')
+            ? Money::of($response['oth_charge'], 'INR', roundingMode: RoundingMode::HALF_UP)
             : Money::of(0, 'INR');
 
         $transactionDateTime = CarbonImmutable::instance(

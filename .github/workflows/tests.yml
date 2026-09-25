@@ -62,3 +62,6 @@ jobs:
 
       - name: Tests
         run: ./vendor/bin/pest
+
+      - name: Payment gateway coverage (min 85%)
+        run: composer test:coverage
