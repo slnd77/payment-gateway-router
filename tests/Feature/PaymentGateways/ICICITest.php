@@ -115,9 +115,13 @@ it('fetches the transaction status via the STATUS endpoint', function () {
         'pgpayuat.icicibank.com/*' => function (ClientRequest $request) {
             expect($request['transactionType'])->toBe('STATUS');
 
+            // The STATUS endpoint reports the request outcome in responseCode ('000')
+            // and the transaction outcome in txnResponseCode ('0000').
             return Http::response([
-                'responseCode' => '0000',
-                'respDescription' => 'Transaction Successful',
+                'responseCode' => '000',
+                'respDescription' => 'Request processed successfully',
+                'txnResponseCode' => '0000',
+                'txnRespDescription' => 'Transaction successful',
                 'amount' => '10.00',
                 'oth_charge' => '0.20',
                 'txnID' => 'ICICITXN999',
