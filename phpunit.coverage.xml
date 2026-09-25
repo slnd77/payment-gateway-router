@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Coverage-only config, used by `composer test:coverage`. Scopes the
+    coverage source to app/Classes/PaymentGateways (the core gateway
+    integrations), app/Services (the orchestration layer on top of them),
+    app/Http/Controllers (the API/web entry points into that layer), and
+    app/Filament/Resources (the admin panel CRUD resources) rather than the
+    whole app, since large swaths of the rest of the Filament admin panel
+    (Pages, Widgets, Policies, ...) currently have no tests at all and would
+    sink an app-wide minimum. See phpunit.xml for the config the regular
+    test suite runs against.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Browser">
+            <directory>tests/Browser</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app/Classes/PaymentGateways</directory>
+            <directory>app/Services</directory>
+            <directory>app/Http/Controllers</directory>
+            <directory>app/Filament/Resources</directory>
+        </include>
+    </source>
+    <php>
+        <!-- APP_ENV=testing makes Laravel load .env.testing (its own, separate database)
+             instead of .env. Do not add DB_* overrides here - they would take
+             precedence over .env.testing and silently point tests at the wrong database. -->
+        <env name="APP_ENV" value="testing"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+    </php>
+</phpunit>

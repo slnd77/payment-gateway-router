@@ -70,6 +70,15 @@ class SupportedPGSeeder extends Seeder
                     'fees_included_in_amount' => 'boolean',
                     'fees_rate' => 'float',
                 ]],
+            'PAYU' => [
+                'pg_class' => 'PAYU',
+                'required' => [
+                    'key' => 'string',
+                    'salt' => 'string',
+                    'supports_refunds' => 'boolean',
+                    'fees_included_in_amount' => 'boolean',
+                    'fees_rate' => 'float',
+                ]],
         ];
 
         foreach ($supportedPaymentGateways as $name => $options) {

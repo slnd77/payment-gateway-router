@@ -26,6 +26,8 @@ It ships with a [Filament](https://filamentphp.com) admin panel for managing cli
 | Razorpay | `RAZORPAY` | Hosted embedded checkout |
 | Cashfree | `CASHFREE` | Hosted embedded checkout (Cashfree JS SDK) |
 | PayPal | `PAYPAL` | Redirect to PayPal's hosted checkout |
+| Stripe | `STRIPE` | Redirect to Stripe's hosted Checkout page |
+| PayU | `PAYU` | Hosted checkout (signed form POST) |
 | ICICI eazypay | `ICICI` | Hosted redirect |
 | PG Simulator | `PGSimulator` | Local simulator for dev/QA (no live gateway calls) |
 

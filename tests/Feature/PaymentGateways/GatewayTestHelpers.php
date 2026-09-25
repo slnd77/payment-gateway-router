@@ -146,3 +146,25 @@ function callGatewayMethod(object $object, string $method, array $args = []): mi
 
     return $reflection->invoke($object, ...$args);
 }
+
+/**
+ * Stubs Stripe's SDK HTTP client - the layer it talks to the network through
+ * instead of Laravel's Http facade, which is why Http::fake() can't reach it
+ * - so Stripe gateway tests can exercise the real API-calling code paths
+ * without a live network round trip. Each entry in $responses is consumed in
+ * order, one per request Stripe's SDK makes.
+ *
+ * @param  array<int, array{body: array<string, mixed>, status?: int}>  $responses
+ */
+function mockStripeHttpClient(array $responses): void
+{
+    $client = Mockery::mock(\Stripe\HttpClient\ClientInterface::class);
+
+    foreach ($responses as $response) {
+        $client->shouldReceive('request')
+            ->once()
+            ->andReturn([json_encode($response['body']), $response['status'] ?? 200, []]);
+    }
+
+    \Stripe\ApiRequestor::setHttpClient($client);
+}

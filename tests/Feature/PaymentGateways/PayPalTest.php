@@ -4,14 +4,72 @@ use App\Classes\PaymentGateways\PayPal;
 use App\Enums\PaymentMethod;
 use App\Enums\TransactionStatus;
 use Devhammed\LaravelBrickMoney\Money;
+use PaypalServerSdkLib\Controllers\OrdersController;
+use PaypalServerSdkLib\Controllers\PaymentsController;
+use PaypalServerSdkLib\Http\ApiResponse;
 use PaypalServerSdkLib\Models\LinkDescription;
 use PaypalServerSdkLib\Models\Money as PayPalMoney;
 use PaypalServerSdkLib\Models\Order;
 use PaypalServerSdkLib\Models\OrdersCapture;
 use PaypalServerSdkLib\Models\PaymentCollection;
 use PaypalServerSdkLib\Models\PurchaseUnit;
+use PaypalServerSdkLib\PaypalServerSdkClient;
 
 require_once __DIR__.'/GatewayTestHelpers.php';
+
+/**
+ * A PayPal gateway whose client() returns an injected mock instead of a real
+ * PaypalServerSdkClient, so tests can exercise handlePaymentRequest(),
+ * handlePaymentResponse(), getTransactionStatus(), and refundPayment() -
+ * i.e. code paths that actually call the SDK - without a live network round
+ * trip. PayPal's SDK talks to the network through its own HTTP client (not
+ * Laravel's Http facade), so it can't be intercepted with Http::fake() the
+ * way ICICI/Cashfree can.
+ */
+class TestablePayPal extends PayPal
+{
+    public ?PaypalServerSdkClient $mockClient = null;
+
+    protected function client(?string $clientId = null, ?string $secret = null): PaypalServerSdkClient
+    {
+        return $this->mockClient ?? parent::client($clientId, $secret);
+    }
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function makeTestablePayPal(array $attributes = []): TestablePayPal
+{
+    return new TestablePayPal(array_merge([
+        'client_id' => 'test-client-id',
+        'secret' => 'test-secret',
+        'mode' => 'sandbox',
+        'paymentAction' => 'Sale',
+        'locale' => 'en_US',
+        'supports_refunds' => true,
+        'fees_included_in_amount' => false,
+        'fees_rate' => 3.49,
+    ], $attributes));
+}
+
+function makePayPalCapturedPayment(string $id, string $status, string $currency, string $value): PaypalServerSdkLib\Models\CapturedPayment
+{
+    $capture = new PaypalServerSdkLib\Models\CapturedPayment;
+    $capture->setId($id);
+    $capture->setStatus($status);
+    $capture->setAmount(new PayPalMoney($currency, $value));
+
+    return $capture;
+}
+
+function mockPayPalApiResponse(mixed $result): ApiResponse
+{
+    $response = Mockery::mock(ApiResponse::class);
+    $response->shouldReceive('getResult')->andReturn($result);
+
+    return $response;
+}
 
 /**
  * PayPal's SDK talks to the network through its own HTTP client (not
@@ -71,6 +129,206 @@ function makePayPalCapture(string $id, string $currency, string $value): OrdersC
 
     return $capture;
 }
+
+it('creates an order and extracts its approval url', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('PAYPAL', []);
+    $gateway = makeTestablePayPal();
+
+    $order = makePayPalOrder('PAYER_ACTION_REQUIRED', [
+        new LinkDescription('https://www.sandbox.paypal.com/checkoutnow?token=ORDER123', 'payer-action'),
+    ]);
+
+    $ordersController = Mockery::mock(OrdersController::class);
+    $ordersController->shouldReceive('createOrder')->once()->andReturn(mockPayPalApiResponse($order));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getOrdersController')->andReturn($ordersController);
+    $gateway->mockClient = $mockClient;
+
+    $url = $gateway->handlePaymentRequest(makePaymentRequestDTO($transaction, $client), $transaction);
+
+    expect($url)->toBe('https://www.sandbox.paypal.com/checkoutnow?token=ORDER123');
+});
+
+it('wraps an order-creation API failure in a clean exception', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('PAYPAL', []);
+    $gateway = makeTestablePayPal();
+
+    $ordersController = Mockery::mock(OrdersController::class);
+    $ordersController->shouldReceive('createOrder')->once()->andThrow(new Exception('Network unreachable'));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getOrdersController')->andReturn($ordersController);
+    $gateway->mockClient = $mockClient;
+
+    $gateway->handlePaymentRequest(makePaymentRequestDTO($transaction, $client), $transaction);
+})->throws(Exception::class, 'Payment Gateway Error: Network unreachable');
+
+it('treats a 422 business-validation error as a clean exception instead of trusting the result', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('PAYPAL', []);
+    $gateway = makeTestablePayPal();
+
+    $ordersController = Mockery::mock(OrdersController::class);
+    $ordersController->shouldReceive('createOrder')->once()->andReturn(
+        mockPayPalApiResponse(['name' => 'UNPROCESSABLE_ENTITY', 'message' => 'Unsupported currency'])
+    );
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getOrdersController')->andReturn($ordersController);
+    $gateway->mockClient = $mockClient;
+
+    $gateway->handlePaymentRequest(makePaymentRequestDTO($transaction, $client), $transaction);
+})->throws(Exception::class, 'Payment Gateway Error:');
+
+it('captures an approved order and maps it to a successful PaymentResponseDTO', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('PAYPAL', [
+        'client_id' => 'test-client-id',
+        'secret' => 'test-secret',
+    ], ['currency' => 'USD', 'amount' => 10]);
+    $gateway = makeTestablePayPal();
+
+    $capture = makePayPalCapture('CAP123', 'USD', '10.00');
+    $order = makePayPalOrder('COMPLETED', [], $capture);
+
+    $paymentsController = Mockery::mock(PaymentsController::class);
+
+    $ordersController = Mockery::mock(OrdersController::class);
+    $ordersController->shouldReceive('captureOrder')->once()->andReturn(mockPayPalApiResponse($order));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getOrdersController')->andReturn($ordersController);
+    $mockClient->shouldReceive('getPaymentsController')->andReturn($paymentsController);
+    $gateway->mockClient = $mockClient;
+
+    $response = $gateway->handlePaymentResponse([
+        'transactionDbId' => (string) $transaction->id,
+        'token' => 'ORDER123',
+    ]);
+
+    expect($response->status)->toBe(TransactionStatus::SUCCESS)
+        ->and($response->transactionId)->toBe('CAP123');
+});
+
+it('wraps an order-capture API failure in a clean exception', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('PAYPAL', [
+        'client_id' => 'test-client-id',
+        'secret' => 'test-secret',
+    ]);
+    $gateway = makeTestablePayPal();
+
+    $ordersController = Mockery::mock(OrdersController::class);
+    $ordersController->shouldReceive('captureOrder')->once()->andThrow(new Exception('Network unreachable'));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getOrdersController')->andReturn($ordersController);
+    $gateway->mockClient = $mockClient;
+
+    $gateway->handlePaymentResponse([
+        'transactionDbId' => (string) $transaction->id,
+        'token' => 'ORDER123',
+    ]);
+})->throws(Exception::class, 'Payment Gateway Error: Network unreachable');
+
+it('fetches a captured payment and maps it to a successful PaymentResponseDTO', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('PAYPAL', [], ['currency' => 'USD', 'amount' => 10]);
+    $transaction->forceFill(['transaction_id' => 'CAP123'])->save();
+    $gateway = makeTestablePayPal();
+
+    $capture = makePayPalCapturedPayment('CAP123', 'COMPLETED', 'USD', '10.00');
+
+    $paymentsController = Mockery::mock(PaymentsController::class);
+    $paymentsController->shouldReceive('getCapturedPayment')->once()->andReturn(mockPayPalApiResponse($capture));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getPaymentsController')->andReturn($paymentsController);
+    $gateway->mockClient = $mockClient;
+
+    $response = $gateway->getTransactionStatus($transaction);
+
+    expect($response->status)->toBe(TransactionStatus::SUCCESS)
+        ->and($response->transactionId)->toBe('CAP123');
+});
+
+it('wraps a captured-payment status-check failure in a clean exception', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('PAYPAL', []);
+    $transaction->forceFill(['transaction_id' => 'CAP_MISSING'])->save();
+    $gateway = makeTestablePayPal();
+
+    $paymentsController = Mockery::mock(PaymentsController::class);
+    $paymentsController->shouldReceive('getCapturedPayment')->once()->andThrow(new Exception('Network unreachable'));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getPaymentsController')->andReturn($paymentsController);
+    $gateway->mockClient = $mockClient;
+
+    $gateway->getTransactionStatus($transaction);
+})->throws(Exception::class, 'Payment Gateway Error: Network unreachable');
+
+it('processes a successful refund via the PayPal API', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('PAYPAL', [
+        'supports_refunds' => true,
+    ]);
+    $transaction->forceFill(['transaction_id' => 'CAP123'])->save();
+    $gateway = makeTestablePayPal(['supports_refunds' => true]);
+
+    $refund = new PaypalServerSdkLib\Models\Refund;
+    $refund->setId('REF123');
+    $refund->setStatus('COMPLETED');
+
+    $paymentsController = Mockery::mock(PaymentsController::class);
+    $paymentsController->shouldReceive('refundCapturedPayment')->once()->andReturn(mockPayPalApiResponse($refund));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getPaymentsController')->andReturn($paymentsController);
+    $gateway->mockClient = $mockClient;
+
+    $response = $gateway->refundPayment($transaction, makePaymentRefundDTO($transaction, $client));
+
+    expect($response->status)->toBe(TransactionStatus::REFUNDED)
+        ->and($response->description)->toBe('PayPal refund COMPLETED');
+});
+
+it('wraps a refund API failure in a clean exception', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('PAYPAL', [
+        'supports_refunds' => true,
+    ]);
+    $transaction->forceFill(['transaction_id' => 'CAP123'])->save();
+    $gateway = makeTestablePayPal(['supports_refunds' => true]);
+
+    $paymentsController = Mockery::mock(PaymentsController::class);
+    $paymentsController->shouldReceive('refundCapturedPayment')->once()->andThrow(new Exception('Network unreachable'));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getPaymentsController')->andReturn($paymentsController);
+    $gateway->mockClient = $mockClient;
+
+    $gateway->refundPayment($transaction, makePaymentRefundDTO($transaction, $client));
+})->throws(Exception::class, 'Payment Gateway Error: Network unreachable');
+
+it('delegates verifyPayment() to getTransactionStatus()', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('PAYPAL', []);
+    $transaction->forceFill(['transaction_id' => 'CAP123'])->save();
+    $gateway = makeTestablePayPal();
+
+    $capture = makePayPalCapturedPayment('CAP123', 'COMPLETED', 'USD', '10.00');
+
+    $paymentsController = Mockery::mock(PaymentsController::class);
+    $paymentsController->shouldReceive('getCapturedPayment')->once()->andReturn(mockPayPalApiResponse($capture));
+
+    $mockClient = Mockery::mock(PaypalServerSdkClient::class);
+    $mockClient->shouldReceive('getPaymentsController')->andReturn($paymentsController);
+    $gateway->mockClient = $mockClient;
+
+    $response = $gateway->verifyPayment($transaction);
+
+    expect($response->status)->toBe(TransactionStatus::SUCCESS);
+});
+
+it('accepts a raw connection-type string just like a ConnectionType enum', function () {
+    $gateway = new PayPal(['client_id' => 'x', 'secret' => 'y'], 'PRODUCTION');
+
+    expect(callGatewayMethod($gateway, 'client'))->toBeInstanceOf(PaypalServerSdkClient::class);
+});
 
 it('refuses to create an order when API credentials are missing', function () {
     ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('PAYPAL', []);

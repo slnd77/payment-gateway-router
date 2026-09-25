@@ -90,4 +90,9 @@ return [
         'key_secret' => env('STRIPE_TEST_KEY_SECRET'),
     ],
 
+    'payu_sandbox' => [
+        'key' => env('PAYU_TEST_KEY'),
+        'salt' => env('PAYU_TEST_SALT'),
+    ],
+
 ];

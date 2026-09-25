@@ -61,6 +61,189 @@ function makeStripePaymentIntent(string $status, array $overrides = []): Payment
     ], $overrides));
 }
 
+afterEach(function () {
+    // Undo mockStripeHttpClient()'s global override so later tests (in this
+    // file or others) that touch Stripe's SDK fall back to its real client.
+    \Stripe\ApiRequestor::setHttpClient(null);
+});
+
+it('creates a checkout session and returns its hosted url', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('STRIPE', []);
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => [
+            'id' => 'cs_test_123',
+            'object' => 'checkout.session',
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'url' => 'https://checkout.stripe.com/c/pay/cs_test_123',
+        ]],
+    ]);
+
+    $url = $gateway->handlePaymentRequest(makePaymentRequestDTO($transaction, $client), $transaction);
+
+    expect($url)->toBe('https://checkout.stripe.com/c/pay/cs_test_123');
+});
+
+it('wraps a checkout-session API failure in a clean exception', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('STRIPE', []);
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => ['error' => ['message' => 'Your card was declined.', 'type' => 'card_error']], 'status' => 402],
+    ]);
+
+    $gateway->handlePaymentRequest(makePaymentRequestDTO($transaction, $client), $transaction);
+})->throws(Exception::class, 'Payment Gateway Error:');
+
+it('retrieves a paid checkout session and maps it to a successful PaymentResponseDTO', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('STRIPE', ['key_secret' => 'sk_test_fake'], ['currency' => 'USD', 'amount' => 10]);
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => [
+            'id' => 'cs_test_123',
+            'object' => 'checkout.session',
+            'status' => 'complete',
+            'payment_status' => 'paid',
+            'amount_total' => 1000,
+            'currency' => 'usd',
+            'payment_method_types' => ['card'],
+            'payment_intent' => [
+                'id' => 'pi_123',
+                'object' => 'payment_intent',
+                'status' => 'succeeded',
+                'amount' => 1000,
+                'currency' => 'usd',
+                'created' => now()->timestamp,
+            ],
+        ]],
+    ]);
+
+    $response = $gateway->handlePaymentResponse([
+        'transactionDbId' => (string) $transaction->id,
+        'session_id' => 'cs_test_123',
+    ]);
+
+    expect($response->status)->toBe(TransactionStatus::SUCCESS)
+        ->and($response->transactionId)->toBe('pi_123')
+        ->and($response->paymentMethod)->toBe(PaymentMethod::CARD);
+});
+
+it('wraps a checkout-session retrieval failure in a clean exception', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('STRIPE', ['key_secret' => 'sk_test_fake']);
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => ['error' => ['message' => 'No such checkout session.', 'type' => 'invalid_request_error']], 'status' => 404],
+    ]);
+
+    $gateway->handlePaymentResponse([
+        'transactionDbId' => (string) $transaction->id,
+        'session_id' => 'cs_test_missing',
+    ]);
+})->throws(Exception::class, 'Payment Gateway Error:');
+
+it('fetches a succeeded payment intent and maps it to a successful PaymentResponseDTO', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('STRIPE', [], ['currency' => 'USD', 'amount' => 10]);
+    $transaction->forceFill(['transaction_id' => 'pi_123'])->save();
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => [
+            'id' => 'pi_123',
+            'object' => 'payment_intent',
+            'status' => 'succeeded',
+            'amount' => 1000,
+            'currency' => 'usd',
+            'created' => now()->timestamp,
+        ]],
+    ]);
+
+    $response = $gateway->getTransactionStatus($transaction);
+
+    expect($response->status)->toBe(TransactionStatus::SUCCESS)
+        ->and($response->transactionId)->toBe('pi_123');
+});
+
+it('wraps a payment-intent status-check failure in a clean exception', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('STRIPE', []);
+    $transaction->forceFill(['transaction_id' => 'pi_missing'])->save();
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => ['error' => ['message' => 'No such payment_intent.', 'type' => 'invalid_request_error']], 'status' => 404],
+    ]);
+
+    $gateway->getTransactionStatus($transaction);
+})->throws(Exception::class, 'Payment Gateway Error:');
+
+it('processes a successful refund via the Stripe API', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('STRIPE', [
+        'supports_refunds' => true,
+    ]);
+    $transaction->forceFill(['transaction_id' => 'pi_123'])->save();
+    $gateway = makeStripe(['supports_refunds' => true]);
+
+    mockStripeHttpClient([
+        ['body' => [
+            'id' => 're_123',
+            'object' => 'refund',
+            'status' => 'succeeded',
+            'amount' => 1000,
+            'currency' => 'inr',
+            'payment_intent' => 'pi_123',
+        ]],
+    ]);
+
+    $response = $gateway->refundPayment($transaction, makePaymentRefundDTO($transaction, $client));
+
+    expect($response->status)->toBe(TransactionStatus::REFUNDED)
+        ->and($response->description)->toBe('Stripe refund succeeded');
+});
+
+it('wraps a refund API failure in a clean exception', function () {
+    ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('STRIPE', [
+        'supports_refunds' => true,
+    ]);
+    $transaction->forceFill(['transaction_id' => 'pi_123'])->save();
+    $gateway = makeStripe(['supports_refunds' => true]);
+
+    mockStripeHttpClient([
+        ['body' => ['error' => ['message' => 'Charge already refunded.', 'type' => 'invalid_request_error']], 'status' => 400],
+    ]);
+
+    $gateway->refundPayment($transaction, makePaymentRefundDTO($transaction, $client));
+})->throws(Exception::class, 'Payment Gateway Error:');
+
+it('accepts a raw connection-type string just like a ConnectionType enum', function () {
+    $gateway = new Stripe(['key_secret' => 'sk_test_fake'], 'TEST');
+
+    expect(callGatewayMethod($gateway, 'client'))->toBeInstanceOf(\Stripe\StripeClient::class);
+});
+
+it('delegates verifyPayment() to getTransactionStatus()', function () {
+    ['transaction' => $transaction] = createGatewayTestTransaction('STRIPE', []);
+    $transaction->forceFill(['transaction_id' => 'pi_123'])->save();
+    $gateway = makeStripe();
+
+    mockStripeHttpClient([
+        ['body' => [
+            'id' => 'pi_123',
+            'object' => 'payment_intent',
+            'status' => 'succeeded',
+            'amount' => 1000,
+            'currency' => 'usd',
+            'created' => now()->timestamp,
+        ]],
+    ]);
+
+    $response = $gateway->verifyPayment($transaction);
+
+    expect($response->status)->toBe(TransactionStatus::SUCCESS);
+});
+
 it('refuses to create a checkout session when API credentials are missing', function () {
     ['transaction' => $transaction, 'client' => $client] = createGatewayTestTransaction('STRIPE', []);
     $gateway = makeStripe(['key_secret' => null]);

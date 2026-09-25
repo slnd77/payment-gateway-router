@@ -80,6 +80,11 @@
             "@php artisan config:clear --ansi",
             "@php artisan test --testsuite=LiveSandbox"
         ],
+        "test:coverage": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan config:clear --ansi",
+            "@php -d xdebug.mode=coverage vendor/bin/pest --configuration=phpunit.coverage.xml --coverage --min=85"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi",
