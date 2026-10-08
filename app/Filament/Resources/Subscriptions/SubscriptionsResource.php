@@ -5,7 +5,10 @@ namespace App\Filament\Resources\Subscriptions;
 use App\Filament\Resources\Subscriptions\Pages\CreateSubscriptions;
 use App\Filament\Resources\Subscriptions\Pages\EditSubscriptions;
 use App\Filament\Resources\Subscriptions\Pages\ListSubscriptions;
+use App\Filament\Resources\Subscriptions\Pages\ViewSubscriptions;
+use App\Filament\Resources\Subscriptions\RelationManagers\TransactionsRelationManager;
 use App\Filament\Resources\Subscriptions\Schemas\SubscriptionsForm;
+use App\Filament\Resources\Subscriptions\Schemas\SubscriptionsInfolist;
 use App\Filament\Resources\Subscriptions\Tables\SubscriptionsTable;
 use App\Models\Subscription;
 use BackedEnum;
@@ -27,6 +30,11 @@ class SubscriptionsResource extends Resource
         return SubscriptionsForm::configure($schema);
     }
 
+    public static function infolist(Schema $schema): Schema
+    {
+        return SubscriptionsInfolist::configure($schema);
+    }
+
     public static function table(Table $table): Table
     {
         return SubscriptionsTable::configure($table);
@@ -35,7 +43,7 @@ class SubscriptionsResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            TransactionsRelationManager::class,
         ];
     }
 
@@ -44,6 +52,7 @@ class SubscriptionsResource extends Resource
         return [
             'index' => ListSubscriptions::route('/'),
             'create' => CreateSubscriptions::route('/create'),
+            'view' => ViewSubscriptions::route('/{record}'),
             'edit' => EditSubscriptions::route('/{record}/edit'),
         ];
     }

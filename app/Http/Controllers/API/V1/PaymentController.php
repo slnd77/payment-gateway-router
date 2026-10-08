@@ -52,8 +52,9 @@ class PaymentController extends Controller
 
     public function handlePaymentResponse(Request $request, string $pgClass): RedirectResponse|JsonResponse
     {
+        $response = $request->all();
+
         try {
-            $response = $request->all();
             Log::debug('pgClass: {pgClass} Payment Response: {response}', ['pgClass' => $pgClass, 'response' => $response]);
 
             return app(TransactionService::class)->handlePaymentResponse($response, $pgClass);

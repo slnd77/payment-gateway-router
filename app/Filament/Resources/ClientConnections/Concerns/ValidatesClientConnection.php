@@ -13,7 +13,7 @@ trait ValidatesClientConnection
     /**
      * Guard the record from being persisted with an environment that
      * doesn't match its gateway connection, an invalid transaction type,
-     * or with more active connections than the client is allowed to have.
+     * or duplicate active connections for the same recurring type.
      *
      * @param  array<string, mixed>  $data
      */
@@ -40,18 +40,21 @@ trait ValidatesClientConnection
             return;
         }
 
+        $isRecurring = (bool) ($data['is_recurring'] ?? false);
+        $type = $isRecurring ? 'recurring' : 'one-time';
+
         $activeConnectionsCount = ClientConnection::query()
             ->where('client_id', $data['client_id'] ?? null)
             ->where('status', true)
+            ->where('is_recurring', $isRecurring)
             ->when($ignoreRecordId, fn ($query) => $query->whereKeyNot($ignoreRecordId))
-            ->when($data['is_recurring'], fn ($query) => $query->where('is_recurring', $data['is_recurring']))
             ->count();
 
         $maxActiveConnections = 1;
 
         if (($activeConnectionsCount + 1) > $maxActiveConnections) {
             $this->failClientConnectionValidation(
-                'This client already has an active connection. Only one active connection is allowed unless it is recurring.'
+                "This client already has an active {$type} connection. Active connections must be unique by recurring (only one active {$type} connection is allowed per client)."
             );
         }
     }

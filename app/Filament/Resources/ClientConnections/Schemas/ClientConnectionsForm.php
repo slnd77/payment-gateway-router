@@ -67,13 +67,13 @@ class ClientConnectionsForm
                             ->offIcon(Heroicon::OutlinedXCircle)
                             ->onColor('success')
                             ->offColor('danger')
-                            ->helperText('Only one active connection allowed per client.')
+                            ->helperText('Active connections must be unique by recurring (max 1 one-time and 1 recurring).')
                             ->columnSpan(1)
                             ->default(true),
 
                         Toggle::make('is_recurring')
                             ->label('Is Recurring')
-                            // ->helperText('Allows up to 2 active connections.')
+                            ->helperText('Enable for recurring/subscription payments, or disable for one-time payments.')
                             ->columnSpan(1)
                             ->default(false),
 

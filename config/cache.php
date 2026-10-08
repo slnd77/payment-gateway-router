@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Client;
+use App\Models\ClientConnection;
 use App\Models\PGConnection;
 use Illuminate\Support\Str;
 
@@ -133,9 +135,9 @@ return [
     */
 
     'serializable_classes' => [
-        App\Models\Client::class,
-        \App\Models\ClientConnection::class,
-        \App\Models\PGConnection::class,
+        Client::class,
+        ClientConnection::class,
+        PGConnection::class,
     ],
 
 ];

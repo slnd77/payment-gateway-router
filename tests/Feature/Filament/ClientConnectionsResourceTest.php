@@ -78,12 +78,37 @@ it('refuses to create a client connection whose environment does not match its g
     expect(ClientConnection::where('client_id', $client->id)->exists())->toBeFalse();
 });
 
-it('refuses to save an edited client connection when it would exceed the one-active-connection limit', function () {
+it('allows a client to have both an active one-time connection and an active recurring connection', function () {
+    actingAsFilamentAdmin();
+    $client = makeFilamentTestClient();
+    $pgConnection1 = makeFilamentTestPgConnection('PGSimulator');
+    $pgConnection2 = makeFilamentTestPgConnection('Razorpay');
+
+    // Create first active connection: one-time (is_recurring: false)
+    makeFilamentTestClientConnection($client, $pgConnection1, isRecurring: false);
+
+    // Create second active connection for the same client: recurring (is_recurring: true)
+    Livewire::test(CreateClientConnections::class)
+        ->fillForm([
+            'client_id' => $client->id,
+            'pg_connection_id' => $pgConnection2->id,
+            'transaction_type' => 'sale',
+            'type' => ConnectionType::TEST->value,
+            'status' => true,
+            'is_recurring' => true,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(ClientConnection::where('client_id', $client->id)->where('status', true)->count())->toBe(2);
+});
+
+it('refuses to save an edited client connection when it would exceed the one-active-connection limit for one-time connections', function () {
     actingAsFilamentAdmin();
     $client = makeFilamentTestClient();
     $pgConnection = makeFilamentTestPgConnection();
-    makeFilamentTestClientConnection($client, $pgConnection); // already active by default
-    $secondConnection = makeFilamentTestClientConnection($client, $pgConnection);
+    makeFilamentTestClientConnection($client, $pgConnection, isRecurring: false); // already active by default
+    $secondConnection = makeFilamentTestClientConnection($client, $pgConnection, isRecurring: false);
 
     Livewire::test(EditClientConnections::class, ['record' => $secondConnection->getRouteKey()])
         ->fillForm([
@@ -93,6 +118,26 @@ it('refuses to save an edited client connection when it would exceed the one-act
             'type' => ConnectionType::TEST->value,
             'status' => true,
             'is_recurring' => false,
+        ])
+        ->call('save')
+        ->assertNotified('Invalid client connection');
+});
+
+it('refuses to save a second active recurring connection for the same client', function () {
+    actingAsFilamentAdmin();
+    $client = makeFilamentTestClient();
+    $pgConnection = makeFilamentTestPgConnection();
+    makeFilamentTestClientConnection($client, $pgConnection, isRecurring: true);
+    $secondRecurringConnection = makeFilamentTestClientConnection($client, $pgConnection, isRecurring: true);
+
+    Livewire::test(EditClientConnections::class, ['record' => $secondRecurringConnection->getRouteKey()])
+        ->fillForm([
+            'client_id' => $client->id,
+            'pg_connection_id' => $pgConnection->id,
+            'transaction_type' => 'sale',
+            'type' => ConnectionType::TEST->value,
+            'status' => true,
+            'is_recurring' => true,
         ])
         ->call('save')
         ->assertNotified('Invalid client connection');

@@ -21,24 +21,31 @@ It ships with a [Filament](https://filamentphp.com) admin panel for managing cli
 
 ### Supported payment gateways
 
-| Gateway | Class | Checkout style |
-|---|---|---|
-| Razorpay | `RAZORPAY` | Hosted embedded checkout |
-| Cashfree | `CASHFREE` | Hosted embedded checkout (Cashfree JS SDK) |
-| PayPal | `PAYPAL` | Redirect to PayPal's hosted checkout |
-| Stripe | `STRIPE` | Redirect to Stripe's hosted Checkout page |
-| PayU | `PAYU` | Hosted checkout (signed form POST) |
-| ICICI eazypay | `ICICI` | Hosted redirect |
-| PG Simulator | `PGSimulator` | Local simulator for dev/QA (no live gateway calls) |
+| Gateway | Class | Checkout style | Recurring / Subscriptions |
+|---|---|---|---|
+| Cashfree | `CASHFREE` | Hosted embedded checkout (Cashfree JS SDK) | Full support (auth, charge, pause/resume/cancel) |
+| PG Simulator | `PGSimulator` | Local simulator for dev/QA (no live gateway calls) | Full simulation (auth, charge, pause/resume/cancel) |
+| Razorpay | `RAZORPAY` | Hosted embedded checkout | One-time payments |
+| PayPal | `PAYPAL` | Redirect to PayPal's hosted checkout | One-time payments |
+| Stripe | `STRIPE` | Redirect to Stripe's hosted Checkout page | One-time payments |
+| PayU | `PAYU` | Hosted checkout (signed form POST) | One-time payments |
+| ICICI eazypay | `ICICI` | Hosted redirect | One-time payments |
 
-Each gateway is implemented against `App\Contracts\PaymentGatewayInterface`, so adding a new one means implementing that interface and wiring it into `PaymentGatewayFactory` — no changes needed anywhere else in the request flow.
+Gateways supporting subscriptions implement `App\Contracts\SubscriptionPaymentGatewayInterface` alongside `App\Contracts\PaymentGatewayInterface`.
 
 ## Features
 
-- Encrypted, per-client API (`AES-256-GCM`) for initiating payments, checking status, and retrieving transaction history
+- Encrypted, per-client API (`AES-256-GCM`) for initiating one-time payments and recurring subscriptions/mandates
 - Per-client routing between a one-time-payment gateway connection and a recurring/subscription gateway connection
+- **Recurring Payments & Mandates Engine**:
+  - Dedicated `/api/v1/initSubscription` endpoint with mandate authorization flow
+  - Periodic (fixed schedule/amount) and on-demand (variable debit up to max amount) subscription types
+  - On-demand recurring charging via `/api/v1/subscription/{reference_id}/charge`
+  - Subscription lifecycle management (`PAUSE`, `RESUME`, `CANCEL`)
+  - Subscription charges history and individual charge status checks
+  - Scheduled background synchronization (`php artisan subscriptions:sync`) for non-terminal mandates
 - Full request/response logging for every gateway API call (`payment_gateway_connection_api_logs`), independent of the client-facing API logs (`client_api_logs`)
-- Role-based Filament admin panel for managing clients, gateway connections, client↔gateway mappings, and transactions
+- Role-based Filament admin panel for managing clients, gateway connections, client↔gateway mappings, transactions, and subscriptions with dedicated infolists and action triggers
 - Refunds, transaction status checks, and subscription tracking where the underlying gateway supports them
 - Optional transaction email notifications
 
@@ -105,13 +112,20 @@ This runs `php artisan serve` and `php artisan queue:listen` together. The admin
 
 All endpoints live under `/api/v1`.
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/v1/initPayment` | Start a payment for a client (encrypted request/response) |
-| `GET /api/v1/transaction/{reference_id}` | Fetch a single transaction by the client's own reference id |
-| `GET /api/v1/transactions` | Paginated transaction list for a client |
+| Endpoint | Purpose | Authentication |
+|---|---|---|
+| `GET /api/v1/initPayment` | Start a one-time payment for a client | Encrypted query params (`AES-256-GCM`) |
+| `GET /api/v1/transaction/{reference_id}` | Fetch a single transaction by client reference ID | `X-TOKEN: {clientId}:{clientSecret}` |
+| `GET /api/v1/transactions` | Paginated transaction list for a client | `X-TOKEN: {clientId}:{clientSecret}` |
+| `GET /api/v1/initSubscription` | Start a recurring mandate authorization | Encrypted query params (`AES-256-GCM`) |
+| `GET /api/v1/subscription/{reference_id}` | Fetch subscription details and status by client reference ID | `X-TOKEN: {clientId}:{clientSecret}` |
+| `GET /api/v1/subscriptions` | Paginated subscription list (with status & date filters) | `X-TOKEN: {clientId}:{clientSecret}` |
+| `POST /api/v1/subscription/{reference_id}/manage` | Manage lifecycle (`PAUSE`, `RESUME`, `CANCEL`) | `X-TOKEN: {clientId}:{clientSecret}` |
+| `POST /api/v1/subscription/{reference_id}/charge` | Trigger a recurring debit on an active subscription | `X-TOKEN: {clientId}:{clientSecret}` |
+| `GET /api/v1/subscription/{reference_id}/charges` | List recurring charges for a subscription | `X-TOKEN: {clientId}:{clientSecret}` |
+| `GET /api/v1/subscription/{reference_id}/charges/{charge_reference_id}` | Fetch status of a specific charge | `X-TOKEN: {clientId}:{clientSecret}` |
 
-`initPayment` is authenticated by encrypting the payload with the client's `client_secret` (`AES-256-GCM`, see `App\Classes\Encryption` and the `HandleApiClientEncryptedRequest` middleware). Everything else runs behind `HandleApiRequest`, which expects a simple `X-TOKEN: {clientId}:{clientSecret}` header instead.
+`initPayment` and `initSubscription` are authenticated by encrypting the payload with the client's `client_secret` (`AES-256-GCM`, see `App\Classes\Encryption` and `HandleApiClientEncryptedRequest` middleware). All management and status endpoints run behind `HandleApiRequest`, which expects the `X-TOKEN: {clientId}:{clientSecret}` header.
 
 ### `initPayment`: encrypting the request
 
@@ -236,6 +250,174 @@ curl_setopt_array($ch, [
 $transactions = json_decode(curl_exec($ch), true);
 curl_close($ch);
 ```
+
+## Recurring Payments & Subscriptions
+
+The router includes a full recurring payments and mandates engine inspired by Cashfree's Subscriptions architecture. It handles mandate authorization, scheduled/periodic plans, on-demand debits, lifecycle changes (`PAUSE`, `RESUME`, `CANCEL`), charges ledger, and background reconciliation.
+
+### Mandate Flow
+
+```text
++-------------------+      GET /api/v1/initSubscription      +---------------------------+
+|  Client Backend   | -------------------------------------> |  Payment Gateway Router   |
++-------------------+      (encrypted AES-256-GCM payload)   +---------------------------+
+         |                                                                 |
+         | Redirect customer to checkout URL                               | Create mandate with PG
+         v                                                                 v
++-------------------+                                            +---------------------------+
+| Customer Browser  | =========================================> | Payment Gateway Checkout  |
++-------------------+         Authorize recurring mandate        +---------------------------+
+         |                                                                 |
+         | Customer completes authorization                                | Postback / return
+         v                                                                 v
++-------------------+      GET redirect_uri?data={encrypted}     +---------------------------+
+| Client Return URL | <----------------------------------------- |  Return Handler / Sync    |
++-------------------+                                            +---------------------------+
+```
+
+### 1. `initSubscription`: Initiating a mandate
+
+Build the subscription request payload, encrypt it using the client's `client_secret` (`AES-256-GCM`), and redirect the customer to `GET /api/v1/initSubscription`.
+
+```php
+$clientId = 'your-client-id';
+$secretKey = 'your-client-secret';
+
+$payload = [
+    'reference_id' => 'sub-ord-5001',        // Unique reference ID per client
+    'clientId' => $clientId,
+    'subscription_type' => 'periodic',        // periodic | on_demand
+    'currency' => 'INR',
+    'amount' => 499.00,                      // Per-cycle amount (for periodic)
+    'max_amount' => 1000.00,                 // Maximum debit cap per transaction
+    'auth_amount' => 0.00,                   // Upfront authorization debit (e.g. 0 or 1)
+    'period' => 'month',                     // day | week | month | year
+    'interval' => 1,                         // Cycle interval (e.g. every 1 month)
+    'max_cycles' => 12,                      // Total occurrences before mandate expires
+    'customer' => [
+        'name' => 'Alice Johnson',
+        'email' => 'alice@example.com',
+        'mobile' => '9876543210',
+    ],
+    'plan_id' => 'plan_gold_monthly',        // Optional plan identifier
+    'plan_name' => 'Gold Monthly Membership',// Optional plan label
+    'return_url' => 'https://example.test/sub-return', // Optional override of Client redirect_uri
+];
+
+$url = 'https://your-router-domain.tld/api/v1/initSubscription?'.http_build_query([
+    'clientId' => $clientId,
+    'data' => encryptPayload($payload, $secretKey),
+]);
+
+header('Location: '.$url); // Send customer to checkout
+```
+
+### 2. Handling the authorization return
+
+Upon authorization completion at the gateway checkout, the customer is redirected to the configured `return_url` (or `redirect_uri`) with an encrypted `data` parameter. Decrypting the payload produces a normalized `SubscriptionResponseDTO`:
+
+```json
+{
+    "subscriptionDbId": "14",
+    "siteReferenceId": "sub-ord-5001",
+    "status": "ACTIVE",
+    "subscriptionId": "sub_cf_123456",
+    "pgReferenceId": "cf_ref_7890",
+    "authorizationReference": "UMRN00000000001",
+    "subscriptionType": "periodic",
+    "amount": 499.00,
+    "maxAmount": 1000.00,
+    "currency": "INR",
+    "period": "month",
+    "interval": 1,
+    "paymentMethod": "card",
+    "nextChargeDateTime": "2026-11-07T12:00:00+00:00"
+}
+```
+
+### 3. Triggering a recurring charge (`charge`)
+
+To execute a subsequent debit on an active or on-demand mandate, make an authenticated request (`X-TOKEN`):
+
+```bash
+curl -X POST https://your-router-domain.tld/api/v1/subscription/sub-ord-5001/charge \
+  -H "X-TOKEN: your-client-id:your-client-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "charge_reference_id": "charge_nov_2026",
+    "amount": 499.00,
+    "currency": "INR",
+    "remarks": "Monthly subscription fee for November 2026"
+  }'
+```
+
+Response:
+
+```json
+{
+    "chargeDbId": "42",
+    "siteReferenceId": "charge_nov_2026",
+    "subscriptionReferenceId": "sub-ord-5001",
+    "status": "SUCCESS",
+    "transactionId": "cf_pay_987654",
+    "paymentId": "SUBTXN42",
+    "amount": 499.00,
+    "pgFees": 9.98,
+    "currency": "INR",
+    "paymentMethod": "card",
+    "transactionDateTime": "2026-11-07T12:05:00+00:00"
+}
+```
+
+### 4. Lifecycle management (`manage`)
+
+Manage the status of active subscriptions:
+
+```bash
+# Pause a subscription
+curl -X POST https://your-router-domain.tld/api/v1/subscription/sub-ord-5001/manage \
+  -H "X-TOKEN: your-client-id:your-client-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "pause"}'
+
+# Resume a paused subscription
+curl -X POST https://your-router-domain.tld/api/v1/subscription/sub-ord-5001/manage \
+  -H "X-TOKEN: your-client-id:your-client-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "resume"}'
+
+# Cancel a subscription
+curl -X POST https://your-router-domain.tld/api/v1/subscription/sub-ord-5001/manage \
+  -H "X-TOKEN: your-client-id:your-client-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "cancel"}'
+```
+
+### 5. Listing and checking charges
+
+```bash
+# List all charges for a subscription
+curl https://your-router-domain.tld/api/v1/subscription/sub-ord-5001/charges \
+  -H "X-TOKEN: your-client-id:your-client-secret"
+
+# Check the real-time status of a specific charge from the gateway
+curl https://your-router-domain.tld/api/v1/subscription/sub-ord-5001/charges/charge_nov_2026 \
+  -H "X-TOKEN: your-client-id:your-client-secret"
+```
+
+### 6. Background synchronization
+
+A scheduled command synchronizes the status of non-terminal subscriptions from their respective payment gateways:
+
+```bash
+# Sync all non-terminal subscriptions
+php artisan subscriptions:sync
+
+# Sync a specific subscription by its primary key ID
+php artisan subscriptions:sync --id=14
+```
+
+This command runs hourly via Laravel's scheduler (`routes/console.php`).
 
 ## Roles
 

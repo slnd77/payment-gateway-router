@@ -12,7 +12,7 @@ class SubscriptionPolicy
      */
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->can('can_view_all_transactions') || $user->can('can_view_client');
     }
 
     /**
@@ -20,7 +20,12 @@ class SubscriptionPolicy
      */
     public function view(User $user, Subscription $subscription): bool
     {
-        return false;
+        if ($user->can('can_view_all_transactions')) {
+            return true;
+        }
+
+        return $user->can('can_view_client')
+            && $subscription->client->users()->whereKey($user->id)->exists();
     }
 
     /**

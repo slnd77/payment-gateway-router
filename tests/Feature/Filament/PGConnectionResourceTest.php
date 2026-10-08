@@ -1,11 +1,13 @@
 <?php
 
 use App\Enums\ConnectionType;
+use App\Filament\Resources\PGConnections\Concerns\ValidatesGatewayAttributes;
 use App\Filament\Resources\PGConnections\Pages\CreatePGConnection;
 use App\Filament\Resources\PGConnections\Pages\EditPGConnection;
 use App\Filament\Resources\PGConnections\PGConnectionResource;
 use App\Models\PGConnection;
 use App\Models\SupportedPaymentGateway;
+use Filament\Support\Exceptions\Halt;
 use Livewire\Livewire;
 
 require_once __DIR__.'/FilamentTestHelpers.php';
@@ -105,7 +107,7 @@ it('halts and notifies when PG connection attributes are missing required fields
 
     $page = new class
     {
-        use \App\Filament\Resources\PGConnections\Concerns\ValidatesGatewayAttributes;
+        use ValidatesGatewayAttributes;
 
         /** @param  array<string, mixed>  $data */
         public function run(array $data): void
@@ -115,5 +117,5 @@ it('halts and notifies when PG connection attributes are missing required fields
     };
 
     expect(fn () => $page->run(['pg_class' => 'PGSimulator', 'attributes' => []]))
-        ->toThrow(\Filament\Support\Exceptions\Halt::class);
+        ->toThrow(Halt::class);
 });

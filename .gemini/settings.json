@@ -1,0 +1,10 @@
+{
+    "mcpServers": {
+        "razorpay": {
+            "httpUrl": "https://mcp.razorpay.com/mcp",
+            "headers": {
+                "Authorization": "Basic cnpwX3Rlc3RfVGt2MDZnaHlsb2pJR2o6RUEwSlJ4clNCTEdGN2UzWHhVeDNqS1FK"
+            }
+        }
+    }
+}

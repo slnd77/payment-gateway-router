@@ -4,6 +4,6 @@ namespace App\Enums;
 
 enum SubscriptionType: string
 {
-    case SUBCRIPTION = 'subscription';
-    case RECURRING = 'recurring';
+    case PERIODIC = 'periodic';
+    case ON_DEMAND = 'on_demand';
 }

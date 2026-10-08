@@ -3,14 +3,24 @@
 namespace App\Classes\PaymentGateways;
 
 use App\Contracts\PaymentGatewayInterface;
+use App\Contracts\SubscriptionGatewayInterface;
 use App\DTO\PaymentRefundDTO;
 use App\DTO\PaymentRequestDTO;
 use App\DTO\PaymentResponseDTO;
+use App\DTO\SubscriptionChargeRequestDTO;
+use App\DTO\SubscriptionChargeResponseDTO;
+use App\DTO\SubscriptionManageDTO;
+use App\DTO\SubscriptionRequestDTO;
+use App\DTO\SubscriptionResponseDTO;
 use App\Enums\ConnectionType;
 use App\Enums\PaymentGatewayRequestType;
 use App\Enums\PaymentMethod;
+use App\Enums\SubscriptionAction;
+use App\Enums\SubscriptionStatus;
 use App\Enums\TransactionStatus;
 use App\Models\PaymentGatewayConnectionApiLog;
+use App\Models\Subscription;
+use App\Models\SubscriptionTransaction;
 use App\Models\Transaction;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -24,7 +34,7 @@ use Illuminate\Support\Str;
  * is chosen manually, which then posts back through the normal
  * handlePaymentResponse callback flow like any real gateway would.
  */
-class PGSimulator implements PaymentGatewayInterface
+class PGSimulator implements PaymentGatewayInterface, SubscriptionGatewayInterface
 {
     protected bool $feesIncludedInAmount;
 
@@ -37,7 +47,7 @@ class PGSimulator implements PaymentGatewayInterface
     /**
      * @param  array<string, mixed>  $pg_data
      */
-    public function __construct(array $pg_data, ConnectionType|string $connectionType = ConnectionType::TEST)
+    public function __construct(array $pg_data = [], ConnectionType|string $connectionType = ConnectionType::TEST)
     {
         $this->feesIncludedInAmount = (bool) ($pg_data['fees_included_in_amount'] ?? false);
         $this->feesRate = (float) ($pg_data['fees_rate'] ?? 0);
@@ -68,6 +78,30 @@ class PGSimulator implements PaymentGatewayInterface
             'client_id' => $transaction->client_id,
             'pg_connection_id' => $transaction->pg_connection_id,
             'transaction_id' => $transaction->id,
+            'request_type' => $requestType,
+            'request_data' => $requestData,
+            'response_data' => $responseData,
+            'response_status' => '200',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestData
+     * @param  array<string, mixed>  $responseData
+     */
+    protected function logSimulatedSubscriptionApiCall(
+        Subscription $subscription,
+        ?SubscriptionTransaction $transaction,
+        PaymentGatewayRequestType $requestType,
+        array $requestData,
+        array $responseData
+    ): void {
+        PaymentGatewayConnectionApiLog::create([
+            'client_id' => $subscription->client_id,
+            'pg_connection_id' => $subscription->pg_connection_id,
+            'transaction_id' => null,
+            'subscription_id' => $subscription->id,
+            'subscription_transaction_id' => $transaction?->id,
             'request_type' => $requestType,
             'request_data' => $requestData,
             'response_data' => $responseData,
@@ -193,5 +227,194 @@ class PGSimulator implements PaymentGatewayInterface
             pgConnection: $transaction->pgConnection->name,
             pgResponseRaw: $requestData,
         );
+    }
+
+    /* -------------------------------------------------------------------------
+     * SubscriptionGatewayInterface Implementation
+     * ---------------------------------------------------------------------- */
+
+    public function handleSubscriptionRequest(SubscriptionRequestDTO $request, Subscription $subscription): string
+    {
+        $subId = 'SIMSUB'.$subscription->id;
+
+        $subscription->subscription_id = $subId;
+        $subscription->pg_reference_id = 'CFSUB'.$subscription->id;
+        $subscription->status = SubscriptionStatus::INITIALIZED;
+        $subscription->save();
+
+        $this->logSimulatedSubscriptionApiCall(
+            $subscription,
+            null,
+            PaymentGatewayRequestType::SUBSCRIPTION_CREATE,
+            ['request' => $request->toArray()],
+            ['subscription_id' => $subId, 'status' => SubscriptionStatus::INITIALIZED->value]
+        );
+
+        return route('pgSimulatorSubscriptionCheckout', ['subscription' => $subscription->id]);
+    }
+
+    public function handleSubscriptionResponse(array $response): SubscriptionResponseDTO
+    {
+        $subscriptionDbId = (string) ($response['subscriptionDbId'] ?? '');
+        $subscription = Subscription::with(['client', 'pgConnection'])->find($subscriptionDbId);
+
+        if (! $subscription) {
+            throw new \Exception('Subscription not found.');
+        }
+
+        $rawStatus = strtoupper((string) ($response['status'] ?? ''));
+        if ($rawStatus === 'SUCCESS') {
+            $status = SubscriptionStatus::ACTIVE;
+        } else {
+            $status = SubscriptionStatus::tryFrom($rawStatus) ?? SubscriptionStatus::ACTIVE;
+        }
+
+        $paymentMethod = PaymentMethod::tryFrom(strtolower((string) ($response['paymentMethod'] ?? ''))) ?? PaymentMethod::UPI;
+        $authRef = (string) ($response['authorizationReference'] ?? ('SIMUMRN'.strtoupper(Str::random(10))));
+
+        $subscription->status = $status;
+        $subscription->payment_method = $paymentMethod;
+        $subscription->authorization_reference = $authRef;
+        $subscription->response_data = $response;
+        $subscription->save();
+
+        $this->logSimulatedSubscriptionApiCall(
+            $subscription,
+            null,
+            PaymentGatewayRequestType::SUBSCRIPTION_STATUS,
+            $response,
+            ['status' => $status->value, 'authRef' => $authRef]
+        );
+
+        return $this->getSubscriptionStatus($subscription);
+    }
+
+    public function getSubscriptionStatus(Subscription $subscription): SubscriptionResponseDTO
+    {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        return new SubscriptionResponseDTO(
+            subscriptionDbId: (string) $subscription->id,
+            siteReferenceId: $subscription->site_reference_id,
+            status: $subscription->status,
+            subscriptionId: (string) ($subscription->subscription_id ?? ('SIMSUB'.$subscription->id)),
+            pgReferenceId: $subscription->pg_reference_id,
+            authorizationReference: $subscription->authorization_reference,
+            subscriptionType: $subscription->subscription_type,
+            amount: $subscription->amount['amount'],
+            maxAmount: $subscription->max_amount['max_amount'],
+            currency: $subscription->currency,
+            period: $subscription->period,
+            interval: $subscription->interval,
+            paymentMethod: $subscription->payment_method ?? PaymentMethod::UNKNOWN,
+            nextChargeDateTime: $subscription->next_charge_date_time
+                ? CarbonImmutable::instance($subscription->next_charge_date_time)
+                : null,
+            description: 'Simulated subscription status: '.$subscription->status->value,
+            clientName: $subscription->client->name,
+            pgConnection: $subscription->pgConnection->name,
+            pgResponseRaw: $subscription->response_data ?? [],
+        );
+    }
+
+    public function manageSubscription(Subscription $subscription, SubscriptionManageDTO $action): SubscriptionResponseDTO
+    {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        $newStatus = match ($action->action) {
+            SubscriptionAction::CANCEL => SubscriptionStatus::CANCELLED,
+            SubscriptionAction::PAUSE => SubscriptionStatus::PAUSED,
+            SubscriptionAction::RESUME => SubscriptionStatus::ACTIVE,
+        };
+
+        $subscription->status = $newStatus;
+        $subscription->save();
+
+        $this->logSimulatedSubscriptionApiCall(
+            $subscription,
+            null,
+            PaymentGatewayRequestType::SUBSCRIPTION_MANAGE,
+            ['action' => $action->action->value],
+            ['status' => $newStatus->value]
+        );
+
+        return $this->getSubscriptionStatus($subscription);
+    }
+
+    public function chargeSubscription(
+        Subscription $subscription,
+        SubscriptionTransaction $charge,
+        SubscriptionChargeRequestDTO $request
+    ): SubscriptionChargeResponseDTO {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        $chargeId = 'SIMTXN'.$charge->id;
+        $pgFees = $this->calculateFees($request->amount);
+        $paymentMethod = $subscription->payment_method ?? PaymentMethod::UPI;
+
+        $charge->payment_id = $chargeId;
+        $charge->transaction_id = $chargeId;
+        $charge->status = TransactionStatus::SUCCESS;
+        $charge->payment_method = $paymentMethod;
+        $charge->pg_fees = $pgFees;
+        $charge->transaction_date_time = now();
+        $charge->data = ['simulated' => true, 'charge_id' => $chargeId];
+        $charge->save();
+
+        $this->logSimulatedSubscriptionApiCall(
+            $subscription,
+            $charge,
+            PaymentGatewayRequestType::SUBSCRIPTION_CHARGE,
+            ['amount' => (string) $request->amount->getAmount()],
+            ['status' => TransactionStatus::SUCCESS->value, 'transaction_id' => $chargeId]
+        );
+
+        return new SubscriptionChargeResponseDTO(
+            chargeDbId: (string) $charge->id,
+            siteReferenceId: (string) ($charge->site_reference_id ?? ''),
+            subscriptionReferenceId: $subscription->site_reference_id,
+            status: TransactionStatus::SUCCESS,
+            transactionId: $chargeId,
+            paymentId: $chargeId,
+            amount: $request->amount,
+            pgFees: $pgFees,
+            currency: $subscription->currency,
+            paymentMethod: $paymentMethod,
+            transactionDateTime: CarbonImmutable::now(),
+            description: 'Simulated charge success',
+            pgResponseRaw: ['status' => 'SUCCESS'],
+        );
+    }
+
+    public function getChargeStatus(SubscriptionTransaction $charge): SubscriptionChargeResponseDTO
+    {
+        $charge->loadMissing(['subscription.client', 'subscription.pgConnection']);
+        $subscription = $charge->subscription;
+
+        return new SubscriptionChargeResponseDTO(
+            chargeDbId: (string) $charge->id,
+            siteReferenceId: (string) ($charge->site_reference_id ?? ''),
+            subscriptionReferenceId: $subscription->site_reference_id,
+            status: $charge->status,
+            transactionId: (string) ($charge->transaction_id ?? ''),
+            paymentId: (string) ($charge->payment_id ?? ''),
+            amount: $charge->amount['amount'],
+            pgFees: $charge->pg_fees['pg_fees'],
+            currency: $subscription->currency,
+            paymentMethod: $charge->payment_method ?? PaymentMethod::UNKNOWN,
+            transactionDateTime: $charge->transaction_date_time
+                ? CarbonImmutable::instance($charge->transaction_date_time)
+                : CarbonImmutable::now(),
+            description: 'Simulated charge status check',
+            pgResponseRaw: $charge->data ?? [],
+        );
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listCharges(Subscription $subscription): array
+    {
+        return $subscription->transactions->map(fn ($t) => $t->toArray())->all();
     }
 }

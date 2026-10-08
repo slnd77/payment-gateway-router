@@ -4,8 +4,10 @@ use App\Classes\PaymentGateways\Stripe;
 use App\Enums\PaymentMethod;
 use App\Enums\TransactionStatus;
 use Devhammed\LaravelBrickMoney\Money;
+use Stripe\ApiRequestor;
 use Stripe\Checkout\Session;
 use Stripe\PaymentIntent;
+use Stripe\StripeClient;
 
 require_once __DIR__.'/GatewayTestHelpers.php';
 
@@ -64,7 +66,7 @@ function makeStripePaymentIntent(string $status, array $overrides = []): Payment
 afterEach(function () {
     // Undo mockStripeHttpClient()'s global override so later tests (in this
     // file or others) that touch Stripe's SDK fall back to its real client.
-    \Stripe\ApiRequestor::setHttpClient(null);
+    ApiRequestor::setHttpClient(null);
 });
 
 it('creates a checkout session and returns its hosted url', function () {
@@ -220,7 +222,7 @@ it('wraps a refund API failure in a clean exception', function () {
 it('accepts a raw connection-type string just like a ConnectionType enum', function () {
     $gateway = new Stripe(['key_secret' => 'sk_test_fake'], 'TEST');
 
-    expect(callGatewayMethod($gateway, 'client'))->toBeInstanceOf(\Stripe\StripeClient::class);
+    expect(callGatewayMethod($gateway, 'client'))->toBeInstanceOf(StripeClient::class);
 });
 
 it('delegates verifyPayment() to getTransactionStatus()', function () {

@@ -4,6 +4,8 @@ namespace App\Classes\PaymentGateways\Concerns;
 
 use App\Enums\PaymentGatewayRequestType;
 use App\Models\PaymentGatewayConnectionApiLog;
+use App\Models\Subscription;
+use App\Models\SubscriptionTransaction;
 use App\Models\Transaction;
 use PaypalServerSdkLib\Exceptions\ApiException;
 
@@ -40,5 +42,30 @@ trait LogsApiCalls
             : '400';
 
         $this->logApiCall($transaction, $requestType, $requestData, ['error' => $responseBody], $statusCode);
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestData
+     * @param  array<string, mixed>  $responseData
+     */
+    protected function logSubscriptionApiCall(
+        Subscription $subscription,
+        ?SubscriptionTransaction $subscriptionTransaction,
+        PaymentGatewayRequestType $requestType,
+        array $requestData,
+        array $responseData,
+        string $responseStatus = '200'
+    ): void {
+        PaymentGatewayConnectionApiLog::create([
+            'client_id' => $subscription->client_id,
+            'pg_connection_id' => $subscription->pg_connection_id,
+            'transaction_id' => null,
+            'subscription_id' => $subscription->id,
+            'subscription_transaction_id' => $subscriptionTransaction?->id,
+            'request_type' => $requestType,
+            'request_data' => $requestData,
+            'response_data' => $responseData,
+            'response_status' => $responseStatus,
+        ]);
     }
 }
