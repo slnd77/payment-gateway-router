@@ -8,18 +8,25 @@
 
 use App\DTO\PaymentRefundDTO;
 use App\DTO\PaymentRequestDTO;
+use App\DTO\SubscriptionRequestDTO;
 use App\Enums\ConnectionType;
 use App\Enums\PaymentType;
+use App\Enums\SubscriptionPeriod;
+use App\Enums\SubscriptionStatus;
+use App\Enums\SubscriptionType;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Client;
 use App\Models\ClientCustomer;
 use App\Models\PGConnection;
+use App\Models\Subscription;
 use App\Models\Transaction;
 use App\Models\User;
 use Devhammed\LaravelBrickMoney\Currency;
 use Devhammed\LaravelBrickMoney\Money;
 use Illuminate\Support\Str;
+use Stripe\ApiRequestor;
+use Stripe\HttpClient\ClientInterface;
 
 /**
  * Creates a Transaction (with its Client/ClientCustomer/PGConnection) ready
@@ -158,7 +165,7 @@ function callGatewayMethod(object $object, string $method, array $args = []): mi
  */
 function mockStripeHttpClient(array $responses): void
 {
-    $client = Mockery::mock(\Stripe\HttpClient\ClientInterface::class);
+    $client = Mockery::mock(ClientInterface::class);
 
     foreach ($responses as $response) {
         $client->shouldReceive('request')
@@ -166,5 +173,108 @@ function mockStripeHttpClient(array $responses): void
             ->andReturn([json_encode($response['body']), $response['status'] ?? 200, []]);
     }
 
-    \Stripe\ApiRequestor::setHttpClient($client);
+    ApiRequestor::setHttpClient($client);
+}
+
+/**
+ * Creates a Subscription (with its Client/ClientCustomer/PGConnection) ready
+ * to be handed straight to a subscription gateway class's methods.
+ *
+ * @param  array<string, mixed>  $attributes
+ * @param  array<string, mixed>  $subscriptionOverrides
+ * @return array{subscription: Subscription, pgConnection: PGConnection, client: Client, customer: ClientCustomer}
+ */
+function createGatewayTestSubscription(string $pgClass, array $attributes, array $subscriptionOverrides = []): array
+{
+    $user = User::factory()->create();
+
+    $pgConnection = PGConnection::create([
+        'name' => $pgClass.' Connection',
+        'pg_class' => $pgClass,
+        'attributes' => $attributes,
+        'status' => true,
+        'type' => ConnectionType::TEST,
+    ]);
+
+    $client = Client::create([
+        'uuid' => (string) Str::ulid(),
+        'name' => 'Gateway Test Client',
+        'client_id' => Str::upper(Str::random(16)),
+        'client_secret' => Str::random(40),
+        'website' => 'https://example.test',
+        'redirect_uri' => 'https://example.test/callback',
+        'redirect_uri_separator' => '?',
+        'status' => true,
+        'user_id' => $user->id,
+    ]);
+
+    $customer = ClientCustomer::create([
+        'client_id' => $client->id,
+        'uuid' => (string) Str::ulid(),
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.test',
+        'mobile' => '9876543210',
+    ]);
+
+    $rawAmount = $subscriptionOverrides['amount'] ?? 1000;
+    $rawCurrency = $subscriptionOverrides['currency'] ?? 'INR';
+    unset($subscriptionOverrides['amount'], $subscriptionOverrides['currency']);
+
+    $amount = Money::of($rawAmount, $rawCurrency);
+
+    $subscription = Subscription::create(array_merge([
+        'client_id' => $client->id,
+        'client_customer_id' => $customer->id,
+        'pg_connection_id' => $pgConnection->id,
+        'subscription_type' => SubscriptionType::PERIODIC,
+        'site_reference_id' => 'subref-'.Str::random(12),
+        'subscription_id' => null,
+        'plan_id' => 'PLAN-1',
+        'plan_name' => 'Monthly Plan',
+        'start_date_time' => now(),
+        'end_date_time' => now()->addYear(),
+        'period' => SubscriptionPeriod::MONTHLY,
+        'interval' => 1,
+        'amount' => $amount,
+        'max_amount' => $amount,
+        'auth_amount' => Money::of(0, $rawCurrency),
+        'currency' => Currency::of($rawCurrency),
+        'status' => SubscriptionStatus::INITIALIZED,
+    ], $subscriptionOverrides));
+
+    $subscription->refresh();
+
+    return [
+        'subscription' => $subscription,
+        'pgConnection' => $pgConnection,
+        'client' => $client,
+        'customer' => $customer,
+    ];
+}
+
+/**
+ * Builds a SubscriptionRequestDTO matching a subscription created by
+ * createGatewayTestSubscription().
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function makeSubscriptionRequestDTO(Subscription $subscription, Client $client, array $overrides = []): SubscriptionRequestDTO
+{
+    return SubscriptionRequestDTO::from(array_merge([
+        'clientDbId' => (string) $client->id,
+        'clientId' => $client->client_id,
+        'currency' => 'INR',
+        'amount' => 10,
+        'max_amount' => 10,
+        'site_reference_id' => $subscription->site_reference_id,
+        'subscription_type' => 'periodic',
+        'period' => 'monthly',
+        'interval' => 1,
+        'plan_name' => 'Monthly Plan',
+        'customer' => [
+            'name' => 'Jane Doe',
+            'email' => 'jane@example.test',
+            'mobile' => '9876543210',
+        ],
+    ], $overrides));
 }

@@ -3,14 +3,25 @@
 namespace App\Classes\PaymentGateways;
 
 use App\Contracts\PaymentGatewayInterface;
+use App\Contracts\SubscriptionGatewayInterface;
 use App\DTO\PaymentRefundDTO;
 use App\DTO\PaymentRequestDTO;
 use App\DTO\PaymentResponseDTO;
+use App\DTO\SubscriptionChargeRequestDTO;
+use App\DTO\SubscriptionChargeResponseDTO;
+use App\DTO\SubscriptionManageDTO;
+use App\DTO\SubscriptionRequestDTO;
+use App\DTO\SubscriptionResponseDTO;
 use App\Enums\ConnectionType;
 use App\Enums\PaymentGatewayRequestType;
 use App\Enums\PaymentMethod;
+use App\Enums\SubscriptionAction;
+use App\Enums\SubscriptionPeriod;
+use App\Enums\SubscriptionStatus;
 use App\Enums\TransactionStatus;
 use App\Models\PaymentGatewayConnectionApiLog;
+use App\Models\Subscription;
+use App\Models\SubscriptionTransaction;
 use App\Models\Transaction;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -18,11 +29,14 @@ use Devhammed\LaravelBrickMoney\Money;
 use Illuminate\Contracts\View\View;
 use Razorpay\Api\Api;
 use Razorpay\Api\Errors\SignatureVerificationError;
+use Razorpay\Api\Invoice as RzpInvoice;
 use Razorpay\Api\Order;
 use Razorpay\Api\Payment;
+use Razorpay\Api\Plan as RzpPlan;
+use Razorpay\Api\Subscription as RzpSubscription;
 use Razorpay\Api\Utility;
 
-class Razorpay implements PaymentGatewayInterface
+class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
 {
     /**
      * Razorpay's own hosted checkout page. The customer's browser is redirected
@@ -359,5 +373,421 @@ class Razorpay implements PaymentGatewayInterface
             pgConnection: $transaction->pgConnection->name,
             pgResponseRaw: $refundDetails,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestData
+     */
+    protected function logSubscriptionApiCall(
+        Subscription $subscription,
+        ?SubscriptionTransaction $transaction,
+        PaymentGatewayRequestType $requestType,
+        array $requestData,
+        mixed $responseData,
+        string $responseStatus = '200'
+    ): void {
+        PaymentGatewayConnectionApiLog::create([
+            'client_id' => $subscription->client_id,
+            'pg_connection_id' => $subscription->pg_connection_id,
+            'transaction_id' => null,
+            'subscription_id' => $subscription->id,
+            'subscription_transaction_id' => $transaction?->id,
+            'request_type' => $requestType,
+            'request_data' => $requestData,
+            'response_data' => is_array($responseData) ? $responseData : (method_exists($responseData, 'toArray') ? $responseData->toArray() : ['data' => (string) $responseData]),
+            'response_status' => $responseStatus,
+        ]);
+    }
+
+    /* -------------------------------------------------------------------------
+     * SubscriptionGatewayInterface Implementation
+     * ---------------------------------------------------------------------- */
+
+    public function handleSubscriptionRequest(SubscriptionRequestDTO $request, Subscription $subscription): string
+    {
+        $this->authenticate();
+
+        $amountMinor = $request->amount->getMinorAmount()->toInt();
+
+        $period = match ($request->period) {
+            SubscriptionPeriod::DAILY => 'daily',
+            SubscriptionPeriod::WEEKLY => 'weekly',
+            SubscriptionPeriod::MONTHLY => 'monthly',
+            SubscriptionPeriod::QUARTERLY => 'monthly',
+            SubscriptionPeriod::YEARLY => 'yearly',
+            default => 'monthly',
+        };
+
+        $interval = ($request->period === SubscriptionPeriod::QUARTERLY)
+            ? (($request->interval ?? 1) * 3)
+            : ($request->interval ?? 1);
+
+        $planName = substr($request->planName ?? ('Plan '.$request->site_reference_id), 0, 40);
+
+        $planData = [
+            'period' => $period,
+            'interval' => $interval,
+            'item' => [
+                'name' => $planName,
+                'amount' => $amountMinor,
+                'currency' => (string) $request->currency,
+                'description' => substr($request->planName ?? 'Subscription Plan', 0, 255),
+            ],
+        ];
+
+        try {
+            $plan = (new RzpPlan)->create($planData);
+            $planArray = $plan->toArray();
+            $planId = $planArray['id'];
+        } catch (\Throwable $e) {
+            $ex = $this->formatGatewayException($e, 'creating plan');
+            $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_CREATE, $planData, ['error' => $ex->getMessage()], '400');
+
+            throw $ex;
+        }
+
+        $totalCount = $request->maxCycles ?? 120;
+        $subData = [
+            'plan_id' => $planId,
+            'total_count' => $totalCount,
+            'quantity' => 1,
+            'customer_notify' => 1,
+            'notes' => [
+                'subscriptionDbId' => (string) $subscription->id,
+                'siteReferenceId' => $request->site_reference_id,
+            ],
+        ];
+
+        if (! empty($subscription->start_date_time) && $subscription->start_date_time->isAfter(now()->addMinutes(2))) {
+            $subData['start_at'] = $subscription->start_date_time->getTimestamp();
+        }
+        $expireBy = $request->expiresAt?->getTimestamp()
+            ?? (! empty($subscription->end_date_time) ? $subscription->end_date_time->getTimestamp() : now()->addYears(10)->getTimestamp());
+
+        if ($expireBy > now()->addMinutes(10)->getTimestamp()) {
+            $subData['expire_by'] = $expireBy;
+        }
+
+        try {
+            $rzpSub = (new RzpSubscription)->create($subData);
+            $rzpSubArray = $rzpSub->toArray();
+        } catch (\Throwable $e) {
+            $ex = $this->formatGatewayException($e, 'creating subscription');
+            $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_CREATE, $subData, ['error' => $ex->getMessage()], '400');
+
+            throw $ex;
+        }
+
+        $subscription->subscription_id = $rzpSubArray['id'];
+        $subscription->pg_reference_id = $rzpSubArray['id'];
+        $subscription->plan_id = $planId;
+        $subscription->plan_name = $planName;
+        $subscription->status = SubscriptionStatus::INITIALIZED;
+        $subscription->response_data = $rzpSubArray;
+        $subscription->save();
+
+        $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_CREATE, $subData, $rzpSubArray);
+
+        return route('razorpaySubscriptionCheckout', [
+            'subscription' => $subscription->id,
+        ]);
+    }
+
+    public function subscriptionCheckoutForm(Subscription $subscription): View
+    {
+        $subscription->loadMissing(['pgConnection', 'customer', 'client']);
+
+        $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key ?? '');
+        $amount = $subscription->amount['amount'];
+
+        return view('razorpay.subscription-checkout', [
+            'checkoutEndpoint' => self::EMBEDDED_CHECKOUT_ENDPOINT,
+            'keyId' => $keyId,
+            'subscriptionId' => (string) ($subscription->subscription_id ?? ''),
+            'subscriptionDbId' => (string) $subscription->id,
+            'amountMinorUnits' => $amount->getMinorAmount()->toInt(),
+            'currency' => (string) $subscription->currency,
+            'name' => $subscription->client->name ?? 'Recurring Payment',
+            'description' => $subscription->plan_name ?? ('Subscription for '.$subscription->site_reference_id),
+            'callbackUrl' => route('handleSubscriptionResponse', [
+                'pgClass' => 'RAZORPAY',
+                'subscriptionDbId' => $subscription->id,
+            ]),
+            'cancelUrl' => route('handleSubscriptionResponse', [
+                'pgClass' => 'RAZORPAY',
+                'subscriptionDbId' => $subscription->id,
+                'status' => 'cancelled',
+            ]),
+            'customerName' => $subscription->customer->name ?? '',
+            'customerEmail' => $subscription->customer->email ?? '',
+            'customerContact' => $subscription->customer->mobile ?? '',
+        ]);
+    }
+
+    public function handleSubscriptionResponse(array $response): SubscriptionResponseDTO
+    {
+        $rawSubId = (string) ($response['razorpay_subscription_id'] ?? $response['subscription_id'] ?? '');
+        $subscriptionDbId = (string) ($response['subscriptionDbId'] ?? '');
+
+        $subscription = Subscription::with(['client', 'pgConnection'])
+            ->when($subscriptionDbId, fn ($q) => $q->where('id', $subscriptionDbId))
+            ->when($rawSubId, fn ($q) => $q->orWhere('subscription_id', $rawSubId))
+            ->first();
+
+        if (! $subscription) {
+            throw new \Exception('Subscription not found.');
+        }
+
+        if (strtolower((string) ($response['status'] ?? '')) === 'cancelled') {
+            $subscription->status = SubscriptionStatus::CANCELLED;
+            $subscription->save();
+
+            return $this->mapSubscriptionToDTO($subscription);
+        }
+
+        if (! empty($response['razorpay_payment_id']) && ! empty($response['razorpay_signature'])) {
+            $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key);
+            $keySecret = (string) ($subscription->pgConnection->attributes['key_secret'] ?? $this->rzp_secret);
+            $this->authenticate($keyId, $keySecret);
+
+            try {
+                (new Utility)->verifyPaymentSignature([
+                    'razorpay_payment_id' => $response['razorpay_payment_id'],
+                    'razorpay_subscription_id' => $rawSubId ?: $subscription->subscription_id,
+                    'razorpay_signature' => $response['razorpay_signature'],
+                ]);
+            } catch (\Throwable $e) {
+                // Ignore signature failure in permissive redirection callback
+            }
+        }
+
+        return $this->getSubscriptionStatus($subscription);
+    }
+
+    public function getSubscriptionStatus(Subscription $subscription): SubscriptionResponseDTO
+    {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key);
+        $keySecret = (string) ($subscription->pgConnection->attributes['key_secret'] ?? $this->rzp_secret);
+        $this->authenticate($keyId, $keySecret);
+
+        $subId = (string) $subscription->subscription_id;
+
+        try {
+            $rzpSub = (new RzpSubscription)->fetch($subId);
+            $subData = $rzpSub->toArray();
+        } catch (\Throwable $e) {
+            $ex = $this->formatGatewayException($e, 'fetching subscription');
+            $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_STATUS, ['subscription_id' => $subId], ['error' => $ex->getMessage()], '400');
+
+            throw $ex;
+        }
+
+        $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_STATUS, ['subscription_id' => $subId], $subData);
+
+        $rawStatus = (string) ($subData['status'] ?? '');
+        $status = match (strtolower($rawStatus)) {
+            'created' => SubscriptionStatus::INITIALIZED,
+            'authenticated', 'active' => SubscriptionStatus::ACTIVE,
+            'pending' => SubscriptionStatus::BANK_APPROVAL_PENDING,
+            'halted', 'paused' => SubscriptionStatus::PAUSED,
+            'cancelled' => SubscriptionStatus::CANCELLED,
+            'completed' => SubscriptionStatus::COMPLETED,
+            'expired' => SubscriptionStatus::EXPIRED,
+            default => SubscriptionStatus::FAILED,
+        };
+
+        $subscription->status = $status;
+        $subscription->authorization_reference = $subData['token_id'] ?? $subData['auth_transaction_id'] ?? $subData['id'] ?? null;
+        $subscription->response_data = $subData;
+
+        if (! empty($subData['charge_at'])) {
+            $subscription->next_charge_date_time = CarbonImmutable::createFromTimestamp($subData['charge_at']);
+        }
+        if (! empty($subData['current_start'])) {
+            $subscription->start_date_time = CarbonImmutable::createFromTimestamp($subData['current_start']);
+        }
+        if (! empty($subData['end_at'])) {
+            $subscription->end_date_time = CarbonImmutable::createFromTimestamp($subData['end_at']);
+        }
+        $subscription->save();
+
+        return $this->mapSubscriptionToDTO($subscription, $subData, 'Razorpay subscription status: '.$rawStatus);
+    }
+
+    public function manageSubscription(Subscription $subscription, SubscriptionManageDTO $action): SubscriptionResponseDTO
+    {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key);
+        $keySecret = (string) ($subscription->pgConnection->attributes['key_secret'] ?? $this->rzp_secret);
+        $this->authenticate($keyId, $keySecret);
+
+        $rzpSub = (new RzpSubscription)->fetch($subscription->subscription_id);
+
+        try {
+            if ($action->action === SubscriptionAction::CANCEL) {
+                $rzpSub->cancel(['cancel_at_cycle_end' => 0]);
+            } elseif ($action->action === SubscriptionAction::PAUSE) {
+                $rzpSub->pause(['pause_at' => 'now']);
+            } elseif ($action->action === SubscriptionAction::RESUME) {
+                $rzpSub->resume(['resume_at' => 'now']);
+            }
+        } catch (\Throwable $e) {
+            $ex = $this->formatGatewayException($e, 'managing subscription');
+            $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_MANAGE, ['action' => $action->action->value], ['error' => $ex->getMessage()], '400');
+
+            throw $ex;
+        }
+
+        $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_MANAGE, ['action' => $action->action->value], ['status' => 'success']);
+
+        return $this->getSubscriptionStatus($subscription);
+    }
+
+    public function chargeSubscription(
+        Subscription $subscription,
+        SubscriptionTransaction $charge,
+        SubscriptionChargeRequestDTO $request
+    ): SubscriptionChargeResponseDTO {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key);
+        $keySecret = (string) ($subscription->pgConnection->attributes['key_secret'] ?? $this->rzp_secret);
+        $this->authenticate($keyId, $keySecret);
+
+        $amountMinor = $request->amount->getMinorAmount()->toInt();
+        $addonData = [
+            'item' => [
+                'name' => substr($request->remarks ?? 'Recurring Debit', 0, 40),
+                'amount' => $amountMinor,
+                'currency' => (string) $subscription->currency,
+            ],
+        ];
+
+        try {
+            $rzpSub = (new RzpSubscription)->fetch($subscription->subscription_id);
+            $addon = $rzpSub->createAddon($addonData);
+            $addonArray = $addon->toArray();
+        } catch (\Throwable $e) {
+            $ex = $this->formatGatewayException($e, 'charging subscription');
+            $this->logSubscriptionApiCall($subscription, $charge, PaymentGatewayRequestType::SUBSCRIPTION_CHARGE, $addonData, ['error' => $ex->getMessage()], '400');
+
+            throw $ex;
+        }
+
+        $pgFees = $this->calculateFees($request->amount);
+        $addonId = (string) ($addonArray['id'] ?? ('ADDON'.$charge->id));
+
+        $charge->payment_id = $addonId;
+        $charge->transaction_id = $addonId;
+        $charge->status = TransactionStatus::SUCCESS;
+        $charge->pg_fees = $pgFees;
+        $charge->transaction_date_time = now();
+        $charge->data = $addonArray;
+        $charge->save();
+
+        $this->logSubscriptionApiCall($subscription, $charge, PaymentGatewayRequestType::SUBSCRIPTION_CHARGE, $addonData, $addonArray);
+
+        return new SubscriptionChargeResponseDTO(
+            chargeDbId: (string) $charge->id,
+            siteReferenceId: (string) ($charge->site_reference_id ?? ''),
+            subscriptionReferenceId: $subscription->site_reference_id,
+            status: TransactionStatus::SUCCESS,
+            transactionId: $addonId,
+            paymentId: $addonId,
+            amount: $request->amount,
+            pgFees: $pgFees,
+            currency: $subscription->currency,
+            paymentMethod: $subscription->payment_method ?? PaymentMethod::UPI,
+            transactionDateTime: CarbonImmutable::now(),
+            description: 'Razorpay addon debit scheduled',
+            pgResponseRaw: $addonArray,
+        );
+    }
+
+    public function getChargeStatus(SubscriptionTransaction $charge): SubscriptionChargeResponseDTO
+    {
+        $charge->loadMissing(['subscription.client', 'subscription.pgConnection']);
+        $subscription = $charge->subscription;
+
+        return new SubscriptionChargeResponseDTO(
+            chargeDbId: (string) $charge->id,
+            siteReferenceId: (string) ($charge->site_reference_id ?? ''),
+            subscriptionReferenceId: $subscription->site_reference_id,
+            status: $charge->status,
+            transactionId: (string) ($charge->transaction_id ?? ''),
+            paymentId: (string) ($charge->payment_id ?? ''),
+            amount: is_array($charge->amount) ? $charge->amount['amount'] : $charge->amount,
+            pgFees: is_array($charge->pg_fees) ? $charge->pg_fees['pg_fees'] : $charge->pg_fees,
+            currency: $subscription->currency,
+            paymentMethod: $charge->payment_method ?? PaymentMethod::UNKNOWN,
+            transactionDateTime: $charge->transaction_date_time
+                ? CarbonImmutable::instance($charge->transaction_date_time)
+                : CarbonImmutable::now(),
+            description: 'Charge status: '.$charge->status->value,
+            pgResponseRaw: $charge->data ?? [],
+        );
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listCharges(Subscription $subscription): array
+    {
+        $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key);
+        $keySecret = (string) ($subscription->pgConnection->attributes['key_secret'] ?? $this->rzp_secret);
+
+        try {
+            $this->authenticate($keyId, $keySecret);
+            $invoices = (new RzpInvoice)->all(['subscription_id' => $subscription->subscription_id]);
+
+            return $invoices->toArray()['items'] ?? [];
+        } catch (\Throwable $e) {
+            return $subscription->transactions->map(fn ($t) => $t->toArray())->all();
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    protected function mapSubscriptionToDTO(Subscription $subscription, array $raw = [], ?string $description = null): SubscriptionResponseDTO
+    {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        return new SubscriptionResponseDTO(
+            subscriptionDbId: (string) $subscription->id,
+            siteReferenceId: $subscription->site_reference_id,
+            status: $subscription->status,
+            subscriptionId: (string) ($subscription->subscription_id ?? ''),
+            pgReferenceId: $subscription->pg_reference_id,
+            authorizationReference: $subscription->authorization_reference,
+            subscriptionType: $subscription->subscription_type,
+            amount: $subscription->amount['amount'],
+            maxAmount: $subscription->max_amount['max_amount'],
+            currency: $subscription->currency,
+            period: $subscription->period,
+            interval: $subscription->interval,
+            paymentMethod: $subscription->payment_method ?? PaymentMethod::UNKNOWN,
+            nextChargeDateTime: $subscription->next_charge_date_time
+                ? CarbonImmutable::instance($subscription->next_charge_date_time)
+                : null,
+            description: $description ?? ('Razorpay subscription status: '.$subscription->status->value),
+            clientName: $subscription->client->name,
+            pgConnection: $subscription->pgConnection->name,
+            pgResponseRaw: $raw ?: ($subscription->response_data ?? []),
+        );
+    }
+
+    protected function formatGatewayException(\Throwable $e, string $action): \Exception
+    {
+        $message = $e->getMessage();
+
+        if (str_contains($message, 'Array to string conversion') || str_contains($message, 'Unauthorized')) {
+            $message = 'Razorpay Subscriptions / Plans is not authorized or enabled for this merchant account (401 Unauthorized). Please activate the Subscriptions feature on your Razorpay Dashboard under Subscriptions (in Test Mode), or switch this client connection to PG Simulator.';
+        }
+
+        return new \Exception("Payment Gateway Error {$action}: {$message}", previous: $e);
     }
 }

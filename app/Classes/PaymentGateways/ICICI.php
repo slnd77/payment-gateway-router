@@ -12,8 +12,8 @@ use App\Enums\PaymentMethod;
 use App\Enums\TransactionStatus;
 use App\Models\PaymentGatewayConnectionApiLog;
 use App\Models\Transaction;
-use Carbon\CarbonImmutable;
 use Brick\Math\RoundingMode;
+use Carbon\CarbonImmutable;
 use Devhammed\LaravelBrickMoney\Currency;
 use Devhammed\LaravelBrickMoney\Money;
 use Illuminate\Http\Client\Response;
@@ -205,7 +205,6 @@ class ICICI implements PaymentGatewayInterface
             ? $this->mapPaymentModes((string) $response['paymentMode'])
             : ($dbTransaction->payment_method ?? PaymentMethod::UNKNOWN);
 
-
         return new PaymentResponseDTO(
             transactionDbId: (string) $response['addlParam1'],
             siteReferenceId: (string) $response['addlParam2'],
@@ -241,8 +240,9 @@ class ICICI implements PaymentGatewayInterface
             throw new \Exception('Transaction not found.');
         }
 
-        //ICICI status api has a different field for response code
+        // ICICI status api has a different field for response code
         $response['txnResponseCode'] = $response['responseCode'];
+
         return $this->mapStatusResponseToPaymentResponseDTO($response, $dbTransaction);
     }
 

@@ -37,4 +37,20 @@ class PaymentGatewayConnectionApiLog extends Model
     {
         return $this->belongsTo(Transaction::class);
     }
+
+    /**
+     * @return BelongsTo<Subscription, $this>
+     */
+    public function subscription(): BelongsTo
+    {
+        return $this->belongsTo(Subscription::class);
+    }
+
+    /**
+     * @return BelongsTo<SubscriptionTransaction, $this>
+     */
+    public function subscriptionTransaction(): BelongsTo
+    {
+        return $this->belongsTo(SubscriptionTransaction::class, 'subscription_transaction_id');
+    }
 }

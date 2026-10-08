@@ -15,6 +15,11 @@
  */
 
 use App\Enums\ConnectionType;
+use App\Enums\PaymentMethod;
+use App\Enums\SubscriptionPeriod;
+use App\Enums\SubscriptionStatus;
+use App\Enums\SubscriptionType;
+use App\Enums\TransactionStatus;
 use App\Models\Client;
 use App\Models\ClientConnection;
 use App\Models\ClientCustomer;
@@ -87,7 +92,7 @@ function makeFilamentTestClientConnection(?Client $client = null, ?PGConnection 
     ]);
 }
 
-function makeFilamentTestTransaction(\App\Enums\TransactionStatus $status = \App\Enums\TransactionStatus::SUCCESS): Transaction
+function makeFilamentTestTransaction(TransactionStatus $status = TransactionStatus::SUCCESS): Transaction
 {
     $client = makeFilamentTestClient();
     $pgConnection = makeFilamentTestPgConnection();
@@ -133,17 +138,17 @@ function makeFilamentTestSubscription(): Subscription
         'client_id' => $client->id,
         'client_customer_id' => $customer->id,
         'pg_connection_id' => $pgConnection->id,
-        'subscription_type' => 'subscription',
+        'subscription_type' => SubscriptionType::PERIODIC,
         'site_reference_id' => 'ref-'.Str::random(12),
         'subscription_id' => 'SUB-'.Str::random(12),
         'plan_id' => 'PLAN-1',
         'start_date_time' => now(),
         'end_date_time' => now()->addYear(),
-        'period' => 'monthly',
+        'period' => SubscriptionPeriod::MONTHLY,
         'interval' => 1,
         'amount' => Money::of(10, 'INR'),
         'currency' => Currency::of('INR'),
-        'status' => 'ACTIVE',
+        'status' => SubscriptionStatus::ACTIVE,
     ]);
 }
 
@@ -156,8 +161,8 @@ function makeFilamentTestSubscriptionTransaction(): SubscriptionTransaction
         'transaction_id' => 'TXN-'.Str::random(12),
         'amount' => Money::of(10, 'INR'),
         'currency' => Currency::of('INR'),
-        'status' => 'SUCCESS',
-        'payment_method' => 'card',
+        'status' => TransactionStatus::SUCCESS,
+        'payment_method' => PaymentMethod::CARD,
         'pg_fees' => Money::of(0, 'INR'),
         'pg_tax' => Money::of(0, 'INR'),
         'data' => [],

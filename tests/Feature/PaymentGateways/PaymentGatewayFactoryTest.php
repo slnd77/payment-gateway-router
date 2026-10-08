@@ -2,8 +2,8 @@
 
 use App\Classes\PaymentGateways\Cashfree;
 use App\Classes\PaymentGateways\ICICI;
-use App\Classes\PaymentGateways\PayPal;
 use App\Classes\PaymentGateways\PaymentGatewayFactory;
+use App\Classes\PaymentGateways\PayPal;
 use App\Classes\PaymentGateways\PayU;
 use App\Classes\PaymentGateways\PGSimulator;
 use App\Classes\PaymentGateways\Razorpay;

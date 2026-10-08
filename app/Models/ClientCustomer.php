@@ -23,4 +23,12 @@ class ClientCustomer extends Model
     {
         return $this->hasMany(Transaction::class);
     }
+
+    /**
+     * @return HasMany<Subscription, $this>
+     */
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class, 'client_customer_id');
+    }
 }

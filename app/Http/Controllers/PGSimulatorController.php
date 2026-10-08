@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Subscription;
 use App\Models\Transaction;
 use Brick\Math\RoundingMode;
 use Illuminate\Contracts\View\View;
@@ -23,6 +24,16 @@ class PGSimulatorController extends Controller
             'pgFees' => $pgFees,
             'transactionId' => 'SIM'.strtoupper(Str::random(12)),
             'responseUrl' => route('handlePaymentResponse', ['pgClass' => 'PGSimulator']),
+        ]);
+    }
+
+    public function subscriptionCheckout(Subscription $subscription): View
+    {
+        $subscription->loadMissing(['client', 'pgConnection']);
+
+        return view('pg-simulator.subscription-checkout', [
+            'subscription' => $subscription,
+            'responseUrl' => route('handleSubscriptionResponse', ['pgClass' => 'PGSimulator']),
         ]);
     }
 }

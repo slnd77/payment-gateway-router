@@ -11,10 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('clients_connections', function (Blueprint $table) {
-            $table->boolean('self_redirect')->default(true)->after('transaction_type')
-                ->comment('If true, app redirects client to bank url. If false, app returns bank url as json.');
-        });
+        if (! Schema::hasColumn('clients_connections', 'self_redirect')) {
+            Schema::table('clients_connections', function (Blueprint $table) {
+                $table->boolean('self_redirect')->default(true)->after('transaction_type')
+                    ->comment('If true, app redirects client to bank url. If false, app returns bank url as json.');
+            });
+        }
     }
 
     /**

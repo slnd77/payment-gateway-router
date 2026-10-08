@@ -15,6 +15,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 class SubscriptionTransactionResource extends Resource
@@ -57,5 +58,10 @@ class SubscriptionTransactionResource extends Resource
             'view' => ViewSubscriptionTransaction::route('/{record}'),
             'edit' => EditSubscriptionTransaction::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['subscription']);
     }
 }

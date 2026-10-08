@@ -3,6 +3,7 @@
 namespace App\Classes\PaymentGateways;
 
 use App\Contracts\PaymentGatewayInterface;
+use App\Contracts\SubscriptionGatewayInterface;
 
 class PaymentGatewayFactory
 {
@@ -35,5 +36,31 @@ class PaymentGatewayFactory
             'PAYU' => new PayU([]),
             default => throw new \Exception('Invalid payment gateway type.'),
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $connection
+     */
+    public static function createSubscriptionGateway(array $connection): SubscriptionGatewayInterface
+    {
+        $gateway = self::create($connection);
+
+        if (! $gateway instanceof SubscriptionGatewayInterface) {
+            $pgClass = $connection['pg_class'] ?? 'unknown';
+            throw new \Exception("Recurring payments are not supported by {$pgClass}.");
+        }
+
+        return $gateway;
+    }
+
+    public static function createEmptySubscriptionGateway(string $pg_class): SubscriptionGatewayInterface
+    {
+        $gateway = self::createEmpty($pg_class);
+
+        if (! $gateway instanceof SubscriptionGatewayInterface) {
+            throw new \Exception("Recurring payments are not supported by {$pg_class}.");
+        }
+
+        return $gateway;
     }
 }

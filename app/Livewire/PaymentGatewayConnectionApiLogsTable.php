@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\ClientConnection;
 use App\Models\PaymentGatewayConnectionApiLog;
 use App\Models\PGConnection;
+use App\Models\Subscription;
 use App\Models\Transaction;
 use Closure;
 use Filament\Actions\Action;
@@ -33,6 +34,8 @@ class PaymentGatewayConnectionApiLogsTable extends Component implements HasActio
 
     public ?Transaction $transaction = null;
 
+    public ?Subscription $subscription = null;
+
     public function table(Table $table): Table
     {
         return $table
@@ -41,6 +44,10 @@ class PaymentGatewayConnectionApiLogsTable extends Component implements HasActio
 
                 if ($this->transaction) {
                     $query->where('transaction_id', $this->transaction->id);
+                }
+
+                if ($this->subscription) {
+                    $query->where('subscription_id', $this->subscription->id);
                 }
 
                 if ($this->pgConnection) {

@@ -7,12 +7,14 @@ use Devhammed\LaravelBrickMoney\Money;
 use PaypalServerSdkLib\Controllers\OrdersController;
 use PaypalServerSdkLib\Controllers\PaymentsController;
 use PaypalServerSdkLib\Http\ApiResponse;
+use PaypalServerSdkLib\Models\CapturedPayment;
 use PaypalServerSdkLib\Models\LinkDescription;
 use PaypalServerSdkLib\Models\Money as PayPalMoney;
 use PaypalServerSdkLib\Models\Order;
 use PaypalServerSdkLib\Models\OrdersCapture;
 use PaypalServerSdkLib\Models\PaymentCollection;
 use PaypalServerSdkLib\Models\PurchaseUnit;
+use PaypalServerSdkLib\Models\Refund;
 use PaypalServerSdkLib\PaypalServerSdkClient;
 
 require_once __DIR__.'/GatewayTestHelpers.php';
@@ -53,9 +55,9 @@ function makeTestablePayPal(array $attributes = []): TestablePayPal
     ], $attributes));
 }
 
-function makePayPalCapturedPayment(string $id, string $status, string $currency, string $value): PaypalServerSdkLib\Models\CapturedPayment
+function makePayPalCapturedPayment(string $id, string $status, string $currency, string $value): CapturedPayment
 {
-    $capture = new PaypalServerSdkLib\Models\CapturedPayment;
+    $capture = new CapturedPayment;
     $capture->setId($id);
     $capture->setStatus($status);
     $capture->setAmount(new PayPalMoney($currency, $value));
@@ -271,7 +273,7 @@ it('processes a successful refund via the PayPal API', function () {
     $transaction->forceFill(['transaction_id' => 'CAP123'])->save();
     $gateway = makeTestablePayPal(['supports_refunds' => true]);
 
-    $refund = new PaypalServerSdkLib\Models\Refund;
+    $refund = new Refund;
     $refund->setId('REF123');
     $refund->setStatus('COMPLETED');
 
