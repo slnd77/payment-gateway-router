@@ -144,6 +144,22 @@ it('creates plan and subscription on Razorpay and returns checkout view url', fu
         ->and($subscription->status)->toBe(SubscriptionStatus::INITIALIZED);
 });
 
+it('builds subscription checkout url when subscription amount is a Money object directly', function () {
+    ['subscription' => $subscription, 'client' => $client] = createGatewayTestSubscription('RAZORPAY', [
+        'key_id' => 'rzp_test_key',
+        'key_secret' => 'rzp_test_secret',
+    ]);
+    $subscription->amount = Money::of(500, 'INR');
+    $gateway = makeRazorpaySub();
+
+    $dto = makeSubscriptionRequestDTO($subscription, $client);
+    $url = $gateway->buildSubscriptionCheckoutUrl($subscription, $dto);
+
+    expect($url)->toContain(Razorpay::EMBEDDED_CHECKOUT_ENDPOINT)
+        ->and($url)->toContain('amount=50000')
+        ->and($url)->toContain('key_id=rzp_test_key');
+});
+
 it('renders the subscription checkout view with real connection and subscription details', function () {
     ['subscription' => $subscription] = createGatewayTestSubscription('RAZORPAY', [
         'key_id' => 'rzp_test_key_custom',
