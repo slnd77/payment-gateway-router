@@ -132,9 +132,10 @@ it('creates plan and subscription on Razorpay and returns checkout view url', fu
     $dto = makeSubscriptionRequestDTO($subscription, $client);
     $url = $gateway->handleSubscriptionRequest($dto, $subscription);
 
-    expect($url)->toBe(route('razorpaySubscriptionCheckout', [
-        'subscription' => $subscription->id,
-    ]));
+    expect($url)->toContain(Razorpay::EMBEDDED_CHECKOUT_ENDPOINT)
+        ->and($url)->toContain('subscription_id=sub_MOCK67890')
+        ->and($url)->toContain('key_id=rzp_test_key')
+        ->and($url)->toContain('callback_url=');
 
     $subscription->refresh();
     expect($subscription->subscription_id)->toBe('sub_MOCK67890')

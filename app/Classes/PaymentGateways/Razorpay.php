@@ -488,9 +488,49 @@ class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
 
         $this->logSubscriptionApiCall($subscription, null, PaymentGatewayRequestType::SUBSCRIPTION_CREATE, $subData, $rzpSubArray);
 
-        return route('razorpaySubscriptionCheckout', [
-            'subscription' => $subscription->id,
-        ]);
+        return $this->buildSubscriptionCheckoutUrl($subscription, $request);
+    }
+
+    public function buildSubscriptionCheckoutUrl(Subscription $subscription, ?SubscriptionRequestDTO $request = null): string
+    {
+        $subscription->loadMissing(['pgConnection', 'customer', 'client']);
+
+        $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key ?? '');
+        $amount = $subscription->amount['amount'];
+
+        $customerName = (string) ($subscription->customer->name ?? $request?->customer['name'] ?? '');
+        $customerEmail = (string) ($subscription->customer->email ?? $request?->customer['email'] ?? '');
+        $customerContact = (string) ($subscription->customer->mobile ?? $request?->customer['mobile'] ?? '');
+
+        $params = [
+            'key_id' => $keyId,
+            'subscription_id' => (string) ($subscription->subscription_id ?? ''),
+            'amount' => $amount->getMinorAmount()->toInt(),
+            'currency' => (string) $subscription->currency,
+            'name' => $subscription->client->name ?? 'Recurring Payment',
+            'description' => $subscription->plan_name ?? ('Subscription for '.$subscription->site_reference_id),
+            'callback_url' => route('handleSubscriptionResponse', [
+                'pgClass' => 'RAZORPAY',
+                'subscriptionDbId' => $subscription->id,
+            ]),
+            'cancel_url' => route('handleSubscriptionResponse', [
+                'pgClass' => 'RAZORPAY',
+                'subscriptionDbId' => $subscription->id,
+                'status' => 'cancelled',
+            ]),
+        ];
+
+        if ($customerName !== '') {
+            $params['prefill']['name'] = $customerName;
+        }
+        if ($customerEmail !== '') {
+            $params['prefill']['email'] = $customerEmail;
+        }
+        if ($customerContact !== '') {
+            $params['prefill']['contact'] = $customerContact;
+        }
+
+        return self::EMBEDDED_CHECKOUT_ENDPOINT.'?'.http_build_query($params);
     }
 
     public function subscriptionCheckoutForm(Subscription $subscription): View
