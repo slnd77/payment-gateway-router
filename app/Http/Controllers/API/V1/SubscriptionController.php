@@ -30,6 +30,7 @@ class SubscriptionController extends Controller
             if (! $result['self_redirect']) {
                 return response()->json([
                     'subscription_url' => $result['url'],
+                    'payment_url' => $result['url'],
                     'status' => 'success',
                     'status_code' => 0,
                 ]);

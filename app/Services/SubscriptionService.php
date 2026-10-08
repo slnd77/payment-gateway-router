@@ -84,6 +84,7 @@ class SubscriptionService
 
         $subscription->subscription_id = 'SUB'.$subscription->id;
         $subscription->save();
+        $subscription->refresh();
 
         $url = $gateway->handleSubscriptionRequest($request, $subscription);
 
@@ -372,6 +373,9 @@ class SubscriptionService
 
     public function mapSubscriptionToDTO(Subscription $subscription): SubscriptionResponseDTO
     {
+        $amount = is_array($subscription->amount) ? ($subscription->amount['amount'] ?? null) : $subscription->amount;
+        $maxAmount = is_array($subscription->max_amount) ? ($subscription->max_amount['max_amount'] ?? null) : $subscription->max_amount;
+
         return new SubscriptionResponseDTO(
             subscriptionDbId: (string) $subscription->id,
             siteReferenceId: $subscription->site_reference_id,
@@ -380,8 +384,8 @@ class SubscriptionService
             pgReferenceId: $subscription->pg_reference_id,
             authorizationReference: $subscription->authorization_reference,
             subscriptionType: $subscription->subscription_type,
-            amount: $subscription->amount['amount'],
-            maxAmount: $subscription->max_amount['max_amount'],
+            amount: $amount,
+            maxAmount: $maxAmount,
             currency: $subscription->currency,
             period: $subscription->period,
             interval: $subscription->interval,

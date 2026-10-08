@@ -108,6 +108,7 @@ it('initiates subscription with self_redirect=false and returns JSON url', funct
     $response->assertOk()
         ->assertJsonStructure([
             'subscription_url',
+            'payment_url',
             'status',
             'status_code',
         ]);

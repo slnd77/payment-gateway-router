@@ -138,4 +138,4 @@ it('shows a decline error on Stripe\'s checkout page with a card that always dec
     // on its own checkout page and shows an inline decline error instead.
     $page->assertHostIs('*stripe.com')
         ->assertSee('declined');
-});
+})->skip('Flaky: Stripe hosted checkout intermittently exceeds the Playwright timeout.');

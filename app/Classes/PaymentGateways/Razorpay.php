@@ -496,7 +496,9 @@ class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
         $subscription->loadMissing(['pgConnection', 'customer', 'client']);
 
         $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key ?? '');
-        $amount = $subscription->amount['amount'];
+        $amount = is_array($subscription->amount) ? ($subscription->amount['amount'] ?? null) : $subscription->amount;
+        $amountMoney = ($amount instanceof Money) ? $amount : $request?->amount;
+        $amountMinor = $amountMoney ? $amountMoney->getMinorAmount()->toInt() : 0;
 
         $customerName = (string) ($subscription->customer->name ?? $request?->customer['name'] ?? '');
         $customerEmail = (string) ($subscription->customer->email ?? $request?->customer['email'] ?? '');
@@ -505,7 +507,7 @@ class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
         $params = [
             'key_id' => $keyId,
             'subscription_id' => (string) ($subscription->subscription_id ?? ''),
-            'amount' => $amount->getMinorAmount()->toInt(),
+            'amount' => $amountMinor,
             'currency' => (string) $subscription->currency,
             'name' => $subscription->client->name ?? 'Recurring Payment',
             'description' => $subscription->plan_name ?? ('Subscription for '.$subscription->site_reference_id),
@@ -538,14 +540,15 @@ class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
         $subscription->loadMissing(['pgConnection', 'customer', 'client']);
 
         $keyId = (string) ($subscription->pgConnection->attributes['key_id'] ?? $this->rzp_key ?? '');
-        $amount = $subscription->amount['amount'];
+        $amount = is_array($subscription->amount) ? ($subscription->amount['amount'] ?? null) : $subscription->amount;
+        $amountMinor = ($amount instanceof Money) ? $amount->getMinorAmount()->toInt() : 0;
 
         return view('razorpay.subscription-checkout', [
             'checkoutEndpoint' => self::EMBEDDED_CHECKOUT_ENDPOINT,
             'keyId' => $keyId,
             'subscriptionId' => (string) ($subscription->subscription_id ?? ''),
             'subscriptionDbId' => (string) $subscription->id,
-            'amountMinorUnits' => $amount->getMinorAmount()->toInt(),
+            'amountMinorUnits' => $amountMinor,
             'currency' => (string) $subscription->currency,
             'name' => $subscription->client->name ?? 'Recurring Payment',
             'description' => $subscription->plan_name ?? ('Subscription for '.$subscription->site_reference_id),
@@ -796,6 +799,9 @@ class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
     {
         $subscription->loadMissing(['client', 'pgConnection']);
 
+        $amount = is_array($subscription->amount) ? ($subscription->amount['amount'] ?? null) : $subscription->amount;
+        $maxAmount = is_array($subscription->max_amount) ? ($subscription->max_amount['max_amount'] ?? null) : $subscription->max_amount;
+
         return new SubscriptionResponseDTO(
             subscriptionDbId: (string) $subscription->id,
             siteReferenceId: $subscription->site_reference_id,
@@ -804,8 +810,8 @@ class Razorpay implements PaymentGatewayInterface, SubscriptionGatewayInterface
             pgReferenceId: $subscription->pg_reference_id,
             authorizationReference: $subscription->authorization_reference,
             subscriptionType: $subscription->subscription_type,
-            amount: $subscription->amount['amount'],
-            maxAmount: $subscription->max_amount['max_amount'],
+            amount: $amount,
+            maxAmount: $maxAmount,
             currency: $subscription->currency,
             period: $subscription->period,
             interval: $subscription->interval,
