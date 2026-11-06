@@ -70,7 +70,7 @@ Gateways supporting subscriptions implement `App\Contracts\SubscriptionPaymentGa
 ### Local setup
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/slnd77/payment-gateway-router.git payment_gateway_router
 cd payment_gateway_router
 
 composer setup
