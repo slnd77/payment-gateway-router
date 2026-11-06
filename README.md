@@ -1,8 +1,8 @@
 # Payment Gateway Router
 
-[![tests](https://github.com/amol-beast/payment-gateway-router/actions/workflows/tests.yml/badge.svg)](https://github.com/amol-beast/payment-gateway-router/actions/workflows/tests.yml)
-[![linter](https://github.com/amol-beast/payment-gateway-router/actions/workflows/lint.yml/badge.svg)](https://github.com/amol-beast/payment-gateway-router/actions/workflows/lint.yml)
-![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+[![tests](https://github.com/slnd77/payment-gateway-router/actions/workflows/tests.yml/badge.svg)](https://github.com/slnd77/payment-gateway-router/actions/workflows/tests.yml)
+[![linter](https://github.com/slnd77/payment-gateway-router/actions/workflows/lint.yml/badge.svg)](https://github.com/slnd77/payment-gateway-router/actions/workflows/lint.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A single, self-hosted API that sits in front of multiple payment gateways so your applications only ever have to integrate once. Clients call one encrypted API, and the router picks the right payment gateway, normalizes the response, and reports back a consistent payload — regardless of which processor actually handled the money.
 
@@ -496,7 +496,7 @@ Issues and pull requests are welcome. Please run `composer test` and `vendor/bin
 
 ## License
 
-Released under the MIT license, as declared in `composer.json` (add a `LICENSE` file to the repository root to make this explicit for tooling and GitHub's license detector).
+Released under the [MIT license](LICENSE).
 
 ## Sponsorship
 

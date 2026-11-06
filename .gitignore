@@ -28,3 +28,9 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Local scratch
+/access.log
+/error.log
+/repomix-output.xml
+/claude.md
