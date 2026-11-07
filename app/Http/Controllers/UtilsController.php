@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Classes\Encryption;
+use App\DTO\PaymentRequestDTO;
 use App\Enums\PaymentType;
 use App\Enums\TransactionType;
 use App\Models\Client;
+use App\Services\TransactionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -23,14 +24,17 @@ class UtilsController extends Controller
         }
 
         $amount = $request->query('amount', 1000);
+        $referenceId = Str::random(10);
         $data = [
+            'clientDbId' => (string) $client->id,
             'clientId' => $client_id,
             'currency' => 'INR',
             'amount' => $amount,
             'purpose' => 'General Donation',
             'paymentType' => $request->query('paymentType', PaymentType::ONE_TIME_PAYMENT->value),
             'transactionType' => $request->query('transactionType', TransactionType::SALE->value),
-            'reference_id' => Str::random(10),
+            'reference_id' => $referenceId,
+            'site_reference_id' => $referenceId,
             'customer' => [
                 'name' => 'Test Customer',
                 'email' => 'dd@dd.com',
@@ -38,10 +42,9 @@ class UtilsController extends Controller
             ],
         ];
 
-        return redirect()
-            ->away(route('initPayment',
-                ['clientId' => $client_id,
-                    'data' => Encryption::encrypt($data, $client->client_secret)]));
+        $paymentRequestDto = PaymentRequestDTO::from($data);
+        $result = app(TransactionService::class)->initiatePayment($paymentRequestDto);
 
+        return redirect()->away($result['url']);
     }
 }

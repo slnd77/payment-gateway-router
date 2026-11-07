@@ -50,14 +50,20 @@ function apiTokenHeader(Client $client): array
     return ['X-TOKEN' => $client->client_id.':'.$client->client_secret];
 }
 
-it('initiates a payment and redirects to the gateway checkout url', function () {
+it('initiates a payment and returns the gateway checkout url response', function () {
     $client = createBrowserTestClient('PGSimulator', []);
     $siteReferenceId = 'ref-'.Str::random(12);
 
     $response = $this->get(encryptedInitPaymentUrl($client, $siteReferenceId));
 
-    $response->assertRedirect();
-    expect($response->headers->get('Location'))->toContain('pg-simulator/checkout');
+    $response->assertOk()
+        ->assertJson([
+            'type' => 'one_time_payment',
+            'site_reference_id' => $siteReferenceId,
+            'status' => 'success',
+            'status_code' => 0,
+        ]);
+    expect($response->json('url'))->toContain('pg-simulator/checkout');
 });
 
 it('returns a clean 400 error when initiatePayment fails', function () {

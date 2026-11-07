@@ -35,7 +35,7 @@ class SubscriptionService
     ) {}
 
     /**
-     * @return array{url: string, self_redirect: bool}
+     * @return array{url: string}
      */
     public function initiateSubscription(SubscriptionRequestDTO $request): array
     {
@@ -90,7 +90,6 @@ class SubscriptionService
 
         return [
             'url' => $url,
-            'self_redirect' => (bool) ($connection['self_redirect'] ?? true),
         ];
     }
 

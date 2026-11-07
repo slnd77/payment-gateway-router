@@ -30,7 +30,7 @@ class TransactionService
     ) {}
 
     /**
-     * @return array{url: string, self_redirect: bool}
+     * @return array{url: string}
      */
     public function initiatePayment(PaymentRequestDTO $paymentRequest): array
     {
@@ -49,7 +49,6 @@ class TransactionService
 
         return [
             'url' => $url,
-            'self_redirect' => (bool) ($connection['self_redirect'] ?? true),
         ];
     }
 

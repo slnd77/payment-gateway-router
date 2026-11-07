@@ -21,22 +21,19 @@ use Illuminate\Support\Facades\Log;
 
 class SubscriptionController extends Controller
 {
-    public function initiateSubscription(ValidateSubscriptionRequest $request): RedirectResponse|JsonResponse
+    public function initiateSubscription(ValidateSubscriptionRequest $request): JsonResponse
     {
         try {
             $subscriptionRequestDto = SubscriptionRequestDTO::from($request->validated());
             $result = app(SubscriptionService::class)->initiateSubscription($subscriptionRequestDto);
 
-            if (! $result['self_redirect']) {
-                return response()->json([
-                    'subscription_url' => $result['url'],
-                    'payment_url' => $result['url'],
-                    'status' => 'success',
-                    'status_code' => 0,
-                ]);
-            }
-
-            return redirect()->away($result['url']);
+            return response()->json([
+                'type' => 'subscription',
+                'url' => $result['url'],
+                'site_reference_id' => $subscriptionRequestDto->site_reference_id,
+                'status' => 'success',
+                'status_code' => 0,
+            ]);
         } catch (\Throwable $e) {
             $this->logFailure($request, $e);
 

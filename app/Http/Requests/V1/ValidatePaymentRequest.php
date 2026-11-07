@@ -5,7 +5,6 @@ namespace App\Http\Requests\V1;
 use App\Enums\PaymentType;
 use App\Enums\TransactionType;
 use App\Models\Transaction;
-use App\Repositories\ClientConnectionRepository;
 use Devhammed\LaravelBrickMoney\Rules\CurrencyRule;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
@@ -74,49 +73,15 @@ class ValidatePaymentRequest extends FormRequest
      */
     protected function failedValidation(Validator $validator): void
     {
-        // 1. Extract error messages
         $errors = $validator->errors()->toArray();
 
-        if (! $this->isSelfRedirect()) {
-            throw new HttpResponseException(
-                response()->json([
-                    'status' => 'error',
-                    'status_code' => 1,
-                    'errors' => $errors,
-                ], Response::HTTP_UNPROCESSABLE_ENTITY) // Status Code: 422
-            );
-        }
-
-        // 3. Stop execution and throw custom JSON response
         throw new HttpResponseException(
             response()->json([
-                'success' => false,
+                'status' => 'error',
+                'status_code' => 1,
                 'message' => 'Validation error occurred.',
                 'errors' => $errors,
-            ], Response::HTTP_UNPROCESSABLE_ENTITY) // Status Code: 422
+            ], Response::HTTP_UNPROCESSABLE_ENTITY)
         );
-    }
-
-    /**
-     * Whether the client's PG connection redirects itself to the bank url,
-     * used to decide the shape of the failed-validation response. Defaults
-     * to true (self-redirecting) when the connection can't be determined
-     * from the still-unvalidated request data.
-     */
-    protected function isSelfRedirect(): bool
-    {
-        $clientId = $this->decryptedData['clientId'] ?? null;
-        $paymentType = $this->decryptedData['paymentType'] ?? null;
-
-        if (! $clientId || ! $paymentType) {
-            return true;
-        }
-
-        $connection = app(ClientConnectionRepository::class)->getClientPGConnection(
-            $clientId,
-            $paymentType === PaymentType::ONE_TIME_PAYMENT->value ? 0 : 1
-        );
-
-        return (bool) ($connection['self_redirect'] ?? true);
     }
 }

@@ -15,27 +15,24 @@ use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
-    public function initiatePayment(ValidatePaymentRequest $request): RedirectResponse|JsonResponse
+    public function initiatePayment(ValidatePaymentRequest $request): JsonResponse
     {
         try {
             $paymentRequestDto = PaymentRequestDTO::from($request->validated());
             $result = app(TransactionService::class)->initiatePayment($paymentRequestDto);
 
-            if (! $result['self_redirect']) {
-                return response()->json([
-                    'payment_url' => $result['url'],
-                    'status' => 'success',
-                    'status_code' => 0,
-                ]);
-            }
-
-            return redirect()->away($result['url']);
+            return response()->json([
+                'type' => 'one_time_payment',
+                'url' => $result['url'],
+                'site_reference_id' => $paymentRequestDto->site_reference_id,
+                'status' => 'success',
+                'status_code' => 0,
+            ]);
         } catch (\Throwable $e) {
             $this->logFailure($request, $e);
 
             return response()->json(['error' => $e->getFile().' '.$e->getLine().' '.$e->getMessage()], 400);
         }
-
     }
 
     private function logFailure(ValidatePaymentRequest $request, \Throwable $e): void

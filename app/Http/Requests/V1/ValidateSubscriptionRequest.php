@@ -5,7 +5,6 @@ namespace App\Http\Requests\V1;
 use App\Enums\SubscriptionPeriod;
 use App\Enums\SubscriptionType;
 use App\Models\Subscription;
-use App\Repositories\ClientConnectionRepository;
 use Devhammed\LaravelBrickMoney\Rules\CurrencyRule;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
@@ -116,38 +115,13 @@ class ValidateSubscriptionRequest extends FormRequest
     {
         $errors = $validator->errors()->toArray();
 
-        if (! $this->isSelfRedirect()) {
-            throw new HttpResponseException(
-                response()->json([
-                    'status' => 'error',
-                    'status_code' => 1,
-                    'errors' => $errors,
-                ], Response::HTTP_UNPROCESSABLE_ENTITY)
-            );
-        }
-
         throw new HttpResponseException(
             response()->json([
-                'success' => false,
+                'status' => 'error',
+                'status_code' => 1,
                 'message' => 'Validation error occurred.',
                 'errors' => $errors,
             ], Response::HTTP_UNPROCESSABLE_ENTITY)
         );
-    }
-
-    protected function isSelfRedirect(): bool
-    {
-        $clientId = $this->decryptedData['clientId'] ?? null;
-
-        if (! $clientId) {
-            return true;
-        }
-
-        $connection = app(ClientConnectionRepository::class)->getClientPGConnection(
-            $clientId,
-            1 // is_recurring = 1
-        );
-
-        return (bool) ($connection['self_redirect'] ?? true);
     }
 }

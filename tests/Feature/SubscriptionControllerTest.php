@@ -14,7 +14,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Support\Str;
 
-function createRecurringTestClient(string $pgClass = 'PGSimulator', array $attributes = [], bool $selfRedirect = true): Client
+function createRecurringTestClient(string $pgClass = 'PGSimulator', array $attributes = []): Client
 {
     $user = User::factory()->create();
 
@@ -42,7 +42,6 @@ function createRecurringTestClient(string $pgClass = 'PGSimulator', array $attri
         'client_id' => $client->id,
         'pg_connection_id' => $pgConnection->id,
         'is_recurring' => true,
-        'self_redirect' => $selfRedirect,
         'type' => ConnectionType::TEST,
         'status' => true,
     ]);
@@ -80,15 +79,21 @@ function subApiTokenHeader(Client $client): array
     return ['X-TOKEN' => $client->client_id.':'.$client->client_secret];
 }
 
-it('initiates subscription with self_redirect=true and redirects to checkout', function () {
-    $client = createRecurringTestClient('PGSimulator', [], selfRedirect: true);
+it('initiates subscription and returns JSON response with gateway url and subscription details', function () {
+    $client = createRecurringTestClient('PGSimulator', []);
     $siteReferenceId = 'sub-ref-'.Str::random(12);
 
     $url = encryptedInitSubscriptionUrl($client, $siteReferenceId);
     $response = $this->get($url);
 
-    $response->assertRedirect();
-    expect($response->headers->get('Location'))->toContain('pg-simulator/subscription/checkout');
+    $response->assertOk()
+        ->assertJson([
+            'type' => 'subscription',
+            'site_reference_id' => $siteReferenceId,
+            'status' => 'success',
+            'status_code' => 0,
+        ]);
+    expect($response->json('url'))->toContain('pg-simulator/subscription/checkout');
 
     $subscription = Subscription::where('client_id', $client->id)
         ->where('site_reference_id', $siteReferenceId)
@@ -96,22 +101,6 @@ it('initiates subscription with self_redirect=true and redirects to checkout', f
 
     expect($subscription)->not->toBeNull()
         ->and($subscription->status)->toBe(SubscriptionStatus::INITIALIZED);
-});
-
-it('initiates subscription with self_redirect=false and returns JSON url', function () {
-    $client = createRecurringTestClient('PGSimulator', [], selfRedirect: false);
-    $siteReferenceId = 'sub-ref-'.Str::random(12);
-
-    $url = encryptedInitSubscriptionUrl($client, $siteReferenceId);
-    $response = $this->get($url);
-
-    $response->assertOk()
-        ->assertJsonStructure([
-            'subscription_url',
-            'payment_url',
-            'status',
-            'status_code',
-        ]);
 });
 
 it('handles subscription callback and redirects to client redirect_uri', function () {
@@ -236,7 +225,7 @@ it('charges subscription and queries charges via API endpoints', function () {
 });
 
 it('initiates on_demand subscription with snake_case subscription_type without period and defaults expiry to 10 years', function () {
-    $client = createRecurringTestClient('PGSimulator', [], selfRedirect: true);
+    $client = createRecurringTestClient('PGSimulator');
     $siteReferenceId = 'sub-ondemand-'.Str::random(12);
 
     $url = encryptedInitSubscriptionUrl($client, $siteReferenceId, [
@@ -246,7 +235,14 @@ it('initiates on_demand subscription with snake_case subscription_type without p
     ]);
     $response = $this->get($url);
 
-    $response->assertRedirect();
+    $response->assertOk()
+        ->assertJson([
+            'type' => 'subscription',
+            'site_reference_id' => $siteReferenceId,
+            'status' => 'success',
+            'status_code' => 0,
+        ]);
+    expect($response->json('url'))->not->toBeEmpty();
 
     $subscription = Subscription::where('client_id', $client->id)
         ->where('site_reference_id', $siteReferenceId)
@@ -260,7 +256,7 @@ it('initiates on_demand subscription with snake_case subscription_type without p
 });
 
 it('initiates periodic subscription without period and defaults period to monthly with 10 years expiry', function () {
-    $client = createRecurringTestClient('PGSimulator', [], selfRedirect: true);
+    $client = createRecurringTestClient('PGSimulator');
     $siteReferenceId = 'sub-periodic-'.Str::random(12);
 
     $url = encryptedInitSubscriptionUrl($client, $siteReferenceId, [
@@ -269,7 +265,14 @@ it('initiates periodic subscription without period and defaults period to monthl
     ]);
     $response = $this->get($url);
 
-    $response->assertRedirect();
+    $response->assertOk()
+        ->assertJson([
+            'type' => 'subscription',
+            'site_reference_id' => $siteReferenceId,
+            'status' => 'success',
+            'status_code' => 0,
+        ]);
+    expect($response->json('url'))->not->toBeEmpty();
 
     $subscription = Subscription::where('client_id', $client->id)
         ->where('site_reference_id', $siteReferenceId)
@@ -283,7 +286,7 @@ it('initiates periodic subscription without period and defaults period to monthl
 });
 
 it('initiates subscription when period is specified as 10 years string', function () {
-    $client = createRecurringTestClient('PGSimulator', [], selfRedirect: true);
+    $client = createRecurringTestClient('PGSimulator');
     $siteReferenceId = 'sub-10yr-'.Str::random(12);
 
     $url = encryptedInitSubscriptionUrl($client, $siteReferenceId, [
@@ -292,7 +295,14 @@ it('initiates subscription when period is specified as 10 years string', functio
     ]);
     $response = $this->get($url);
 
-    $response->assertRedirect();
+    $response->assertOk()
+        ->assertJson([
+            'type' => 'subscription',
+            'site_reference_id' => $siteReferenceId,
+            'status' => 'success',
+            'status_code' => 0,
+        ]);
+    expect($response->json('url'))->not->toBeEmpty();
 
     $subscription = Subscription::where('client_id', $client->id)
         ->where('site_reference_id', $siteReferenceId)
