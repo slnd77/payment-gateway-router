@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use Database\Seeders\DemoSeeder;
 use Illuminate\Console\Command;
+use Illuminate\Database\Console\Migrations\FreshCommand;
+use Illuminate\Database\Console\WipeCommand;
 
 class DemoReset extends Command
 {
@@ -19,8 +21,18 @@ class DemoReset extends Command
             return self::FAILURE;
         }
 
-        $this->call('migrate:fresh', ['--force' => true]);
-        $this->call('db:seed', ['--class' => DemoSeeder::class, '--force' => true]);
+        // AppServiceProvider blocks migrate:fresh in production. Demo mode is
+        // the one production setup where wiping the database is the point.
+        FreshCommand::prohibit(false);
+        WipeCommand::prohibit(false);
+
+        if ($this->call('migrate:fresh', ['--force' => true]) !== self::SUCCESS
+            || $this->call('db:seed', ['--class' => DemoSeeder::class, '--force' => true]) !== self::SUCCESS) {
+            $this->error('Demo reset failed.');
+
+            return self::FAILURE;
+        }
+
         $this->call('cache:clear');
 
         $this->info('Demo data reset.');
