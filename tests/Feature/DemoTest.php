@@ -81,3 +81,11 @@ it('decrypts the result on the return page', function () {
         ->assertSee('success')
         ->assertSee('demo-abc');
 });
+
+it('shows the reset notice on the admin login page only in demo mode', function () {
+    $this->get('/dashboard/login')->assertOk()->assertSee('All data resets every 3 hours');
+
+    config(['demo.enabled' => false]);
+
+    $this->get('/dashboard/login')->assertOk()->assertDontSee('All data resets every 3 hours');
+});
