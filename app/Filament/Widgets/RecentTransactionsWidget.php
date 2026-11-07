@@ -32,7 +32,9 @@ class RecentTransactionsWidget extends TableWidget
 
                 TextColumn::make('amount')
                     ->label('Amount')
-                    ->formatStateUsing(fn (Transaction $record): string => (string) Money::ofMinor(
+                    // The money cast returns [amount, currency]; formatting that state renders each
+                    // element ("₹499, ₹499"), so build a single value from the raw columns instead.
+                    ->state(fn (Transaction $record): string => (string) Money::ofMinor(
                         $record->getRawOriginal('amount'),
                         $record->getRawOriginal('currency'),
                     )),
