@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title') · Payment Gateway Router demo</title>
+    <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     <style>
         :root { --bg: #f4f5f7; --card: #fff; --text: #1f2933; --muted: #616e7c; --line: #e4e7eb; --accent: #2563eb; --ok: #15803d; --bad: #b91c1c; --warn: #b45309; }
         * { box-sizing: border-box; }
