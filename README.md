@@ -49,6 +49,21 @@ Gateways supporting subscriptions implement `App\Contracts\SubscriptionPaymentGa
 - **Pest 4** (testing), **Larastan / PHPStan**, **Laravel Pint** (static analysis & style)
 - Gateway SDKs: `razorpay/razorpay`, `cashfree/cashfree-pg-sdk-php`, `paypal/paypal-server-sdk`, `stripe/stripe-php`
 
+## Live demo
+
+[pgdemo.vasuttam.com](https://pgdemo.vasuttam.com) runs a sample merchant checkout against the router, using PG Simulator and test-mode Razorpay, Stripe and ICICI accounts. The admin panel is at `/dashboard` (login `demo@pgdemo.vasuttam.com` / `demo-pg-2026`). The database resets every 3 hours.
+
+To run the same demo yourself, set `DEMO_ENABLED=true` and, optionally, `DEMO_RAZORPAY_ATTRIBUTES`, `DEMO_STRIPE_ATTRIBUTES` and `DEMO_ICICI_ATTRIBUTES` as JSON objects of test credentials (see `config/demo.php`), then run `php artisan demo:reset`. It refuses to run unless demo mode is on.
+
+## Docker
+
+```bash
+cp .env.example .env    # set APP_KEY (php artisan key:generate --show) and APP_URL
+docker compose up -d --build
+```
+
+This starts the app on port 8080 (`APP_PORT`), a queue worker, the scheduler and MySQL 8.4. Migrations run when the app container starts.
+
 ## Getting started
 
 ### Requirements
