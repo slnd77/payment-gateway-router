@@ -9,3 +9,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('subscriptions:sync')->hourly();
+
+if (config('demo.enabled')) {
+    Schedule::command('demo:reset')->cron(config('demo.reset_cron'))->withoutOverlapping();
+}
