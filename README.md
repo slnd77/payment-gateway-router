@@ -4,20 +4,11 @@
 [![linter](https://github.com/slnd77/payment-gateway-router/actions/workflows/lint.yml/badge.svg)](https://github.com/slnd77/payment-gateway-router/actions/workflows/lint.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A single, self-hosted API that sits in front of multiple payment gateways so your applications only ever have to integrate once. Clients call one encrypted API, and the router picks the right payment gateway, normalizes the response, and reports back a consistent payload — regardless of which processor actually handled the money.
+A Laravel service that sits between my applications and the payment gateways they use. Each application integrates with one encrypted API; the router decides which gateway handles the payment, calls it, and returns the result in a single normalized format.
 
-## What is this?
+Without it, every site needs its own Razorpay/Cashfree/PayPal integration, and changing gateways means changing code in each one. With the router, a client app is registered once with its own credentials, and the gateway behind it (set separately for one-time payments and for subscriptions) is a setting in the admin panel.
 
-Payment Gateway Router is a Laravel application that acts as a **merchant-side aggregator/router** between your own products (websites, mobile apps, other backends) and one or more third-party payment gateways. Each of your client applications is registered once with its own encrypted credentials and routing rules; the router then decides, per transaction, which payment gateway connection to use (e.g. one-time payments vs. recurring subscriptions), talks to that gateway's API, and hands back a normalized transaction result.
-
-It ships with a [Filament](https://filamentphp.com) admin panel for managing clients, gateway connections, and transactions, and a small encrypted REST API that client applications integrate against.
-
-### Use cases
-
-- **Multi-gateway checkout** — run several payment gateways behind one API and switch/failover between them per client, without every downstream app needing its own gateway-specific integration.
-- **Marketplace / platform billing** — onboard many client applications (tenants) with their own gateway credentials and payment routing rules (one-time vs. recurring), managed centrally.
-- **Gateway migration** — swap or A/B test payment gateways for a client without changing anything in the client's own codebase.
-- **Centralized reconciliation** — every gateway API call and every transaction is logged in one place for auditing, support, and reconciliation, regardless of which gateway processed it.
+It includes a [Filament](https://filamentphp.com) admin panel for clients, gateway connections, transactions and subscriptions. Every gateway API call is logged, so support and reconciliation happen in one place.
 
 ### Supported payment gateways
 
@@ -129,7 +120,17 @@ All endpoints live under `/api/v1`.
 
 ### `initPayment`: encrypting the request
 
-Build the payload, encrypt it with your `client_secret`, and send `clientId` + the encrypted `data` as query params to `GET /api/v1/initPayment`. The router replies with a redirect straight to the gateway's checkout — there's nothing to decrypt on this leg.
+Build the payload, encrypt it with your `client_secret`, and send `clientId` + the encrypted `data` as query params to `GET /api/v1/initPayment`. The router initiates the payment with the gateway and replies with a JSON response containing the gateway's checkout URL:
+
+```json
+{
+    "status": "success",
+    "status_code": 0,
+    "type": "one_time_payment",
+    "url": "https://gateway-checkout-url...",
+    "site_reference_id": "order-1234"
+}
+```
 
 ```php
 function encryptPayload(mixed $data, string $secretKey): string
@@ -168,12 +169,16 @@ $payload = [
     ],
 ];
 
-$url = 'https://your-router-domain.tld/api/v1/initPayment?'.http_build_query([
+$initUrl = 'https://your-router-domain.tld/api/v1/initPayment?'.http_build_query([
     'clientId' => $clientId,
     'data' => encryptPayload($payload, $secretKey),
 ]);
 
-header('Location: '.$url); // send the customer here to start the payment
+// Call the router from your backend and redirect the customer to the gateway URL
+$response = file_get_contents($initUrl);
+$result = json_decode($response, true);
+
+header('Location: '.$result['url']); // redirect customer to the payment gateway
 ```
 
 ### `initPayment`: decrypting the final result
@@ -253,7 +258,7 @@ curl_close($ch);
 
 ## Recurring Payments & Subscriptions
 
-The router includes a full recurring payments and mandates engine inspired by Cashfree's Subscriptions architecture. It handles mandate authorization, scheduled/periodic plans, on-demand debits, lifecycle changes (`PAUSE`, `RESUME`, `CANCEL`), charges ledger, and background reconciliation.
+Recurring payments are modelled on Cashfree's subscriptions API: mandate authorization, periodic plans, on-demand debits, `PAUSE`/`RESUME`/`CANCEL`, a charges ledger, and a scheduled sync with the gateway.
 
 ### Mandate Flow
 
@@ -277,7 +282,17 @@ The router includes a full recurring payments and mandates engine inspired by Ca
 
 ### 1. `initSubscription`: Initiating a mandate
 
-Build the subscription request payload, encrypt it using the client's `client_secret` (`AES-256-GCM`), and redirect the customer to `GET /api/v1/initSubscription`.
+Build the subscription request payload, encrypt it using the client's `client_secret` (`AES-256-GCM`), and call `GET /api/v1/initSubscription`. The router registers the mandate with the configured gateway and returns a JSON response containing the checkout URL:
+
+```json
+{
+    "status": "success",
+    "status_code": 0,
+    "type": "subscription",
+    "url": "https://gateway-checkout-url...",
+    "site_reference_id": "sub-ord-5001"
+}
+```
 
 ```php
 $clientId = 'your-client-id';
@@ -304,12 +319,16 @@ $payload = [
     'return_url' => 'https://example.test/sub-return', // Optional override of Client redirect_uri
 ];
 
-$url = 'https://your-router-domain.tld/api/v1/initSubscription?'.http_build_query([
+$initUrl = 'https://your-router-domain.tld/api/v1/initSubscription?'.http_build_query([
     'clientId' => $clientId,
     'data' => encryptPayload($payload, $secretKey),
 ]);
 
-header('Location: '.$url); // Send customer to checkout
+// Call the router from your backend and redirect the customer to the gateway URL
+$response = file_get_contents($initUrl);
+$result = json_decode($response, true);
+
+header('Location: '.$result['url']); // Send customer to checkout
 ```
 
 ### 2. Handling the authorization return
@@ -490,25 +509,6 @@ CI runs `composer test` against PHP 8.4–8.5 on every push/PR to `main` (see `.
 8. **Point real gateway credentials** at `TYPE=PRODUCTION` PG Connections only after verifying the flow end-to-end in `TEST` mode — every gateway class here talks to the gateway's real sandbox/production endpoints directly, so `TEST` connections should always use that gateway's sandbox credentials.
 9. On every deploy, re-run `php artisan migrate --force` and the cache-priming commands above; consider `php artisan queue:restart` so workers pick up new code.
 
-## Contributing
-
-Issues and pull requests are welcome. Please run `composer test` and `vendor/bin/phpstan analyse` before opening a PR — CI enforces both.
-
 ## License
 
-Released under the [MIT license](LICENSE).
-
-## Sponsorship
-
-If this project saves you the trouble of writing your own multi-gateway payment router, consider supporting its development:
-
-- ⭐ Star the repository — it helps others find the project.
-- 💖 [Sponsor via GitHub Sponsors](https://github.com/sponsors) to support ongoing maintenance and new gateway integrations.
-- 🐛 Sponsors and backers get priority on issues and feature requests.
-
-<!-- Add your sponsors/backers here, e.g.: -->
-<!--
-### Sponsors
-
-<a href="https://example.com"><img src="https://example.com/logo.png" width="120" alt="Sponsor name" /></a>
--->
+[MIT](LICENSE)
