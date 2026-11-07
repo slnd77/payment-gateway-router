@@ -22,7 +22,8 @@
         code { font: 13px ui-monospace, Consolas, monospace; background: #eef0f3; padding: 1px 5px; border-radius: 4px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         td { padding: 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-        td:first-child { color: var(--muted); width: 40%; }
+        td:first-child { color: var(--muted); width: 40%; padding-right: 12px; }
+        td.value { overflow-wrap: anywhere; font: 13px ui-monospace, Consolas, monospace; }
         .status { font-weight: 700; text-transform: uppercase; }
         .status-success { color: var(--ok); } .status-failed { color: var(--bad); } .status-pending { color: var(--warn); }
         ul { margin: 0; padding-left: 18px; color: var(--muted); }

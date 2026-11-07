@@ -94,6 +94,7 @@ class DemoController extends Controller
         return view('demo.return', [
             'gateway' => config("demo.gateways.$gateway.label", $gateway),
             'result' => is_array($result) ? $result : null,
+            'rows' => is_array($result) ? array_map($this->formatValue(...), $result) : [],
             'error' => $error ?? (is_array($result) ? null : 'Empty response from the router.'),
         ]);
     }
@@ -109,6 +110,21 @@ class DemoController extends Controller
                 && Client::where('client_id', 'DEMO'.Str::upper($key))->exists(),
             ARRAY_FILTER_USE_BOTH,
         );
+    }
+
+    /**
+     * Money values arrive as {amount, currency: {code, ...}}; show them as "INR 499.00".
+     */
+    private function formatValue(mixed $value): string
+    {
+        return match (true) {
+            is_array($value) && isset($value['amount'], $value['currency']['code']) => $value['currency']['code'].' '.$value['amount'],
+            is_array($value) && isset($value['code']) && is_string($value['code']) => $value['code'],
+            is_bool($value) => $value ? 'true' : 'false',
+            $value === null => '-',
+            is_scalar($value) => (string) $value,
+            default => (string) json_encode($value, JSON_UNESCAPED_SLASHES),
+        };
     }
 
     private function ensureDemoEnabled(): void

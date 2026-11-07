@@ -13,10 +13,10 @@
             @php($status = strtolower((string) ($result['status'] ?? '')))
             <h2>{{ $gateway }}: <span class="status status-{{ $status }}">{{ $status ?: 'unknown' }}</span></h2>
             <table>
-                @foreach ($result as $field => $value)
+                @foreach ($rows as $field => $display)
                     <tr>
                         <td>{{ $field }}</td>
-                        <td>{{ is_scalar($value) || $value === null ? var_export($value, true) : json_encode($value) }}</td>
+                        <td class="value">{{ $display }}</td>
                     </tr>
                 @endforeach
             </table>
