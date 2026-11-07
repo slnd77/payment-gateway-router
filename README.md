@@ -53,6 +53,12 @@ Gateways supporting subscriptions implement `App\Contracts\SubscriptionPaymentGa
 
 [pgdemo.vasuttam.com](https://pgdemo.vasuttam.com) runs a sample merchant checkout against the router, using PG Simulator and test-mode Razorpay, Stripe and ICICI accounts. The admin panel is at `/dashboard` (login `demo@pgdemo.vasuttam.com` / `demo-pg-2026`). The database resets every 3 hours.
 
+| Merchant checkout | Decrypted result |
+|---|---|
+| ![Demo checkout](docs/screenshots/demo-checkout.png) | ![Payment result](docs/screenshots/payment-result.png) |
+| **Admin dashboard** | **Transactions** |
+| ![Admin dashboard](docs/screenshots/admin-dashboard.png) | ![Transactions list](docs/screenshots/admin-transactions.png) |
+
 To run the same demo yourself, set `DEMO_ENABLED=true` and, optionally, `DEMO_RAZORPAY_ATTRIBUTES`, `DEMO_STRIPE_ATTRIBUTES` and `DEMO_ICICI_ATTRIBUTES` as JSON objects of test credentials (see `config/demo.php`), then run `php artisan demo:reset`. It refuses to run unless demo mode is on.
 
 ## Docker
